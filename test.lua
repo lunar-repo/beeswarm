@@ -4,6 +4,8 @@
 ]]
 
 local ContentProvider = game:GetService("ContentProvider")
+local TeleportService = game:GetService("TeleportService")
+local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -29,14 +31,15 @@ repeat task.wait() until LocalPlayer:FindFirstChild("PlayerGui") and
 	LocalPlayer.PlayerGui.LoadingScreenGui:FindFirstChild("LoadingMessage") and
 	LocalPlayer.PlayerGui.LoadingScreenGui.LoadingMessage.Visible == false
 
-local function supersaferequest(url,method,arg)
+local function supersaferequest(url,method,arg,body)
     if not method then method = "GET" end
     local properties = {
         Url = url,
         Method = method,
         Headers = {
             ["content-type"] = "application/json"
-        }
+        },
+        Body = body
     }
     for i, v in pairs(arg or {}) do
         properties[i]=v
@@ -58,12 +61,12 @@ local function supersaferequest(url,method,arg)
 end
 
 -- install the icon
-local host = "https://atlasbss.xyz/"
+local host = "https://github.com/lunar-repo/pic/raw/main/"
 if not isfile("r_antlers.png") then
-    writefile("r_antlers.png", supersaferequest(host .. "antlers.png").Body)
+    writefile("r_antlers.png", supersaferequest(host .. "Reindeer_Antlers.png").Body)
 end
-if not isfile("banner.png") then
-    writefile("banner.png", supersaferequest(host .. "banner.png").Body)
+if not isfile("Lunar_Bss-Discord-Symbol-White.png") then
+    writefile("Lunar_Bss-Discord-Symbol-White.png", supersaferequest(host .. "Discord-Symbol-White.png").Body)
 end
 
 -- entire gui module
@@ -86,6 +89,15 @@ local mainuimodule = (function()
     local IsMobile = UserInputService.TouchEnabled == true and UserInputService.KeyboardEnabled == false
 
     local function getIcon(name)
+        if name:find("rbxasset") then
+            local asset = {
+                id = name,
+                imageRectSize = Vector2.new(0,0),
+                imageRectOffset = Vector2.new(0,0),
+            }
+
+            return asset
+        end
         name = string.match(string.lower(name), "^%s*(.*)%s*$")
         local sizedicons = Icons['48px']
         local r = sizedicons[name]
@@ -97,7 +109,7 @@ local mainuimodule = (function()
         local iro = Vector2.new(riro[1], riro[2])
 
         local asset = {
-            id = r[1],
+            id = "rbxassetid://" .. r[1],
             imageRectSize = irs,
             imageRectOffset = iro,
         }
@@ -728,7 +740,7 @@ local mainuimodule = (function()
         ImageLabel_2.BorderSizePixel = 0
         ImageLabel_2.Position = UDim2.new(1, -6, 0.5, 0)
         ImageLabel_2.Size = UDim2.new(0, 16, 0, 16)
-        ImageLabel_2.Image = "rbxassetid://" .. searchasset.id
+        ImageLabel_2.Image = searchasset.id
         ImageLabel_2.ImageRectOffset = searchasset.imageRectOffset
         ImageLabel_2.ImageRectSize = searchasset.imageRectSize
 
@@ -979,10 +991,11 @@ local mainuimodule = (function()
             ImageLabel.BorderSizePixel = 0
             ImageLabel.Position = UDim2.new(0, 7, 0.5, 0)
             ImageLabel.Size = UDim2.new(0, 16, 0, 16)
-            ImageLabel.Image = "rbxassetid://" .. Asset.id
+            ImageLabel.Image = Asset.id
             ImageLabel.ImageColor3 = Color3.fromRGB(161, 161, 161)
             ImageLabel.ImageRectOffset = Asset.imageRectOffset
             ImageLabel.ImageRectSize = Asset.imageRectSize
+            ImageLabel.ScaleType = Enum.ScaleType.Fit
 
             local TInfo = TweenInfo.new(0.1, Enum.EasingStyle.Linear)
             local sepTween = nil
@@ -1357,7 +1370,7 @@ local mainuimodule = (function()
                 ImageLabel.BorderSizePixel = 0
                 ImageLabel.Position = UDim2.new(1, -4, 0.5, 0)
                 ImageLabel.Size = UDim2.new(0, 20, 0, 20)
-                ImageLabel.Image = "rbxassetid://" .. mouseasset.id
+                ImageLabel.Image = mouseasset.id
                 ImageLabel.ImageRectOffset = mouseasset.imageRectOffset
                 ImageLabel.ImageRectSize = mouseasset.imageRectSize
                 
@@ -2909,7 +2922,13 @@ local gearmeta = {
     Glider = {"top", "glider"},
     ["Mondo Belt Bag"] = {"top", "belt"},
     ["Beekeeper's Mask"] = {"top", "hat"},
-    ["Beekeeper's Boots"] = {"top", "boots"}
+    ["Beekeeper's Boots"] = {"top", "boots"},
+    ["Petal Belt"] = {"petal", "belt"},
+    PetalPlanter = {"petal", "planter"},
+    ["Petal Wand"] = {"petal", "tool"},
+    ["Coconut Clogs"] = {"coconut", "boots"},
+    ["Coconut Canister"] = {"coconut", "backpack"},
+    ["Coconut Belt"] = {"coconut", "belt"},
 }
 
 local hasaccessshopfuncs = {
@@ -2946,7 +2965,42 @@ local hasaccessshopfuncs = {
     end
 }
 
+function getclientstatcache(...)
+    return clientstatcache:Get({...})
+end
+
+local tasks = {
+    tasks = {}
+}
+function tasks.add(name, func)
+    if rawget(tasks.tasks, name) ~= nil then
+        if coroutine.status(rawget(tasks.tasks, name)) ~= "dead" then return end
+    end
+    local thread = task.spawn(func)
+    rawset(tasks.tasks, name, thread)
+    repeat task.wait() until coroutine.status(thread) == "dead"
+end
+function tasks.delete(name)
+    local _task = tasks.tasks[tostring(name)]
+    if not _task then return warn("Task \"" .. tostring(name) .. "\" doesn't exist") end
+    task.cancel(_task)
+    tasks.tasks[name] = nil
+    print("Task \"" .. tostring(name) .. "\" ended")
+end
+function tasks.deleteall()
+    for name, _ in pairs(tasks.tasks) do
+        tasks.delete(name)
+    end
+end
+
 local allvars = {
+    timeatload = os.clock(),
+    discordwebhookurl = "",
+    discordwebhookenabled = false,
+    webhookinterval = 5,
+    lastdiscordupdate = 0,
+    disconnected = false,
+    starthoney = getclientstatcache("Honey"),
     isrunning = true,
     autofarm = false,
     autodig = false,
@@ -2965,6 +3019,7 @@ local allvars = {
     tweenspeed = 12,
     redosprinklers = true,
     sprinklefield = nil,
+    allowedcrafts = {},
     autoprogjson = [[
         [
             {
@@ -2995,6 +3050,8 @@ local allvars = {
             {
                 "event": "gear",
                 "value": [
+                    "Jar",
+                    "Rake",
                     "Backpack",
                     "Magnet",
                     "Canister",
@@ -3003,9 +3060,10 @@ local allvars = {
                     "Basic Boots",
                     "Compressor",
                     "Super-Scooper",
+                    "Pulsar",
+                    "Electro-Magnet",
                     "Helmet",
                     "Port-O-Hive",
-                    "Electro-Magnet",
                     "Honey Dipper",
                     "Propeller Hat",
                     "Looker Guard",
@@ -3053,7 +3111,9 @@ local allvars = {
     forcetasks = {
         fireflies = false
     },
-    farmfireflies = false
+    farmfireflies = false,
+    fireflyfield = nil,
+    nextautoprogitem = nil,
 }
 
 local slotkeytotype = {
@@ -3428,10 +3488,6 @@ function tweento(vect, speed, caveavoid, force, precise)
 	disableall()
 end
 
-function getclientstatcache(...)
-    return clientstatcache:Get({...})
-end
-
 function claimhive()
 	while not LocalPlayer:FindFirstChild("Honeycomb") do
 		print("Claiming hive")
@@ -3456,30 +3512,6 @@ allvars.hive = LocalPlayer:FindFirstChild("Honeycomb").Value
 local ActivateButton = LocalPlayer.PlayerGui.ScreenGui.ActivateButton
 local TOPBAR_OFFSET = 40
 local box = LocalPlayer.PlayerGui.ScreenGui.QuestionBox
-
-local tasks = {
-    tasks = {}
-}
-function tasks.add(name, func)
-    if rawget(tasks.tasks, name) ~= nil then
-        if coroutine.status(rawget(tasks.tasks, name)) ~= "dead" then return end
-    end
-    local thread = task.spawn(func)
-    rawset(tasks.tasks, name, thread)
-    repeat task.wait() until coroutine.status(thread) == "dead"
-end
-function tasks.delete(name)
-    local _task = tasks.tasks[tostring(name)]
-    if not _task then return warn("Task \"" .. tostring(name) .. "\" doesn't exist") end
-    task.cancel(_task)
-    tasks.tasks[name] = nil
-    print("Task \"" .. tostring(name) .. "\" ended")
-end
-function tasks.deleteall()
-    for name, _ in pairs(tasks.tasks) do
-        tasks.delete(name)
-    end
-end
 
 function pressactivatebutton()
     firesignal(ActivateButton.MouseButton1Click)
@@ -3513,7 +3545,9 @@ function blendercraft(name, amount)
     tasks.add("blender", function()
         local ticketsneeded = amount
         local displayname = eggtypesmodule.Get(name).DisplayName
-        if not reallycanafford(recipes[name], true) or not hasaccessshopfuncs.badgeguild() then return end
+        local recipe = table.clone(recipes.Get(name))
+        recipe.Cost = recipe.Ingredients
+        if not reallycanafford(recipe, true) or not hasaccessshopfuncs.badgeguild() then return end
         if displayname == "Gumdrops" or displayname == "Moon Charm" then
             ticketsneeded = math.ceil(amount / 10)
         end
@@ -3577,17 +3611,25 @@ function reallycanafford(data, noblend)
             if not getclientstatcache(v.Type, v.Category) or getclientstatcache(v.Type, v.Category) < v.Amount then
                 --print("missing item req")
                 if not noblend then
+                    local function craft()
+                        blendercraft(v.Category, v.Amount - (getclientstatcache(v.Type, v.Category) or 0))
+                    end
                     if v.Category == "Glitter" then
-                        blendercraft("Glitter", v.Amount - (getclientstatcache(v.Type, v.Category) or 0))
-                        allvars.forcetasks.fireflies = true
+                        if table.find(allvars.allowedcrafts, "Glitter") then
+                            craft()
+                        end
                     elseif v.Category == "MoonCharm" then
-                        allvars.forcetasks.fireflies = true
+                        if table.find(allvars.allowedcrafts, "Moon Charm") then
+                            craft()
+                        else
+                            allvars.forcetasks.fireflies = true
+                        end
                     elseif v.Category == "Stinger" then
                         allvars.forcetasks.killvic = true
-                    elseif v.Category == "RedExtract" then
-                        blendercraft("RedExtract", v.Amount - (getclientstatcache(v.Type, v.Category) or 0))
-                    elseif v.Category == "BlueExtract" then
-                        blendercraft("BlueExtract", v.Amount - (getclientstatcache(v.Type, v.Category) or 0))
+                    else
+                        if table.find(allvars.allowedcrafts, eggtypesmodule.Get(v.Category).DisplayName) then
+                            craft()
+                        end
                     end
                 end
                 return false
@@ -3817,7 +3859,9 @@ function buygear(gearName, shop)
         elseif shop == "basicegg" then
             pos = Vector3.new(-139, 5, 244)
         end
-        tweento(pos)
+        if not allvars.api.magnitude(allvars.api.getRoot().Position, pos, 8) then
+            tweento(pos)
+        end
         repeat task.wait() until ActivateButton.TextBox.Text == "Open Shop" or ActivateButton.TextBox.Text == "Leave Shop"
         while ActivateButton.TextBox.Text == "Open Shop" do
             pressactivatebutton()
@@ -3833,13 +3877,14 @@ function buygear(gearName, shop)
             RunService.RenderStepped:Wait()
             task.wait()
         end
+        RunService.RenderStepped:Wait()
         task.wait(0.2)
         firesignal(shopui.Scroller.BuyButton.MouseButton1Click)
         if ActivateButton.TextBox.Text ~= "Leave Shop" then return end
         --print("done")
         local start = 0
         repeat
-            if tick() - start>0.7 then
+            if tick() - start >= 0.7 then
                 pressactivatebutton()
                 start = tick()
             end
@@ -3857,7 +3902,7 @@ function addbasicbee()
             if getclientstatcache("Honey") < getEggPrice(bought) then return end
             buygear("Basic Egg", "basicegg")
         end
-        basiceggs = getclientstatcache("Eggs", "Basic") or 1
+        basiceggs = getclientstatcache("Eggs", "Basic")
         tweento((LocalPlayer.SpawnPos.Value+Vector3.new(allvars.hive.Name == "Hive6" and 19 or -19, 0,12)).Position, nil, nil, true, true)
         local used = 0
         for y = 1, 10 do
@@ -3866,11 +3911,24 @@ function addbasicbee()
                 if oldcell:FindFirstChild("Faceplate") then
                     if oldcell.CellType.Value == "BasicBee" then
                         if (getclientstatcache("Eggs", "RoyalJelly") or 0) > 0 then
+                            print(
+                                "feed1",
+                                "x:", x,
+                                "y:", y,
+                                "oldcell:", oldcell,
+                                "newcell:", allvars.hive.Cells["C" .. x .. "," .. y],
+                                "same:", allvars.hive.Cells["C" .. x .. "," .. y] == oldcell,
+                                "celltype:", oldcell.CellType.Value,
+                                "newcelltype:", allvars.hive.Cells["C" .. x .. "," .. y].CellType.Value,
+                                "faceplate:", oldcell:FindFirstChild("Faceplate"),
+                                "newfaceplate:", allvars.hive.Cells["C" .. x .. "," .. y]:FindFirstChild("Faceplate")
+                            )
                             smartfeedbee(oldcell, "Royal Jelly", "Transform")
+                            continue
                         end
                     end
                 end
-                if not oldcell.CellLocked.Value and oldcell.CellType.Value == "Empty" then
+                if not oldcell.CellLocked.Value and oldcell.CellType.Value == "Empty" and getclientstatcache("Eggs", "Basic") > 0 then
                     smartfeedbee(oldcell, "Basic Egg")
                     local s, bee = pcall(function()
                         local start = tick()
@@ -3882,10 +3940,22 @@ function addbasicbee()
                     if (getclientstatcache("Eggs", "RoyalJelly") or 0) > 0 and tostring(bee) == "Basic" then
                         repeat task.wait() until allvars.hive.Cells["C" .. x .. "," .. y]:FindFirstChild("Faceplate")
                         task.wait(0.2)
+                        print(
+                            "feed2",
+                            "x:", x,
+                            "y:", y,
+                            "oldcell:", oldcell,
+                            "newcell:", allvars.hive.Cells["C" .. x .. "," .. y],
+                            "same:", allvars.hive.Cells["C" .. x .. "," .. y] == oldcell,
+                            "celltype:", oldcell.CellType.Value,
+                            "newcelltype:", allvars.hive.Cells["C" .. x .. "," .. y].CellType.Value,
+                            "faceplate:", oldcell:FindFirstChild("Faceplate"),
+                            "newfaceplate:", allvars.hive.Cells["C" .. x .. "," .. y]:FindFirstChild("Faceplate")
+                        )
                         smartfeedbee(oldcell, "Royal Jelly", "Transform")
                     end
                     used = used + 1
-                    if used >= basiceggs then result = true return end
+                    if used >= basiceggs then result = true end
                 end
             end
         end
@@ -4005,7 +4075,7 @@ end
 
 function canCollectToken(token)
 	return (not allvars.api.magnitude(allvars.api.getRoot().Position * Vector3.new(1, 0, 1), token.Position * Vector3.new(1, 0, 1), 4))
-        and allvars.api.magnitude(allvars.api.getRoot().Position * Vector3.new(0, 1, 0), token.Position * Vector3.new(0, 1, 0), 10)
+        and (allvars.api.getRoot().Position * Vector3.new(0, 1, 0) - token.Position * Vector3.new(0, 1, 0)).Y <= 6
 end
 
 function farmobj(part, farmuntilgone, parttowait)
@@ -4119,7 +4189,7 @@ function smartredeemcode(code)
 end
 
 function randompoint(part)
-    local size = part.Size
+    local size = part.Size / 1.75
     local cf = part.CFrame
     local x = math.random() - 0.5
     local z = math.random() - 0.5
@@ -4174,9 +4244,12 @@ function farmfireflies()
                     table.remove(fields, i)
                 end
             end
-			if fireflyfield and table.find(fields, fireflyfield.Name) and v.BodyVelocity.Velocity == Vector3.zero and allvars.fireflyfield ~= fireflyfield then
+			if fireflyfield and v.BodyVelocity.Velocity == Vector3.zero and allvars.fireflyfield ~= fireflyfield then
+                allvars.fireflyfield = fireflyfield
+                if table.find(fields, fireflyfield.Name) then
+                    return {}
+                end
 				print("Fireflies in the " .. tostring(fireflyfield))
-				allvars.fireflyfield = fireflyfield
 			end
 			if (fireflyfield and table.find(fields, fireflyfield.Name) and v.BodyVelocity.Velocity == Vector3.zero) or allvars.fireflyfield then
 				allvars.fieldtofarm = allvars.fireflyfield
@@ -4403,7 +4476,7 @@ function mainautofarmloop()
                             tweento(entry.pos, nil, nil, nil, true)
                         end
                         task.wait(1)
-                        current = entry.pos
+                        current = entry.pos 
                     end
                 elseif v.event == "bees" then
                     if #getbeesdata().all < v.value then
@@ -4414,10 +4487,6 @@ function mainautofarmloop()
                         if addbasicbee() then _earlybreak = true end
                     end
                 elseif v.event == "gear" then
-                    local equipped = getclientstatcache("EquippedAccessories")
-                    local bestUpgrade = nil
-                    local firstUnaffordable = nil
-
                     local owned = {}
                     for _, v in pairs(getclientstatcache("Accessories") or {}) do
                         table.insert(owned, v)
@@ -4439,70 +4508,43 @@ function mainautofarmloop()
                             table.insert(owned, v)
                         end
                     end
-
+                    
+                    -- find highest owned index per slot
+                    local highestOwnedPerSlot = {}
                     for i, gearName in ipairs(v.value) do
-                        if table.find(owned, gearName) then continue end
-                        local meta = gearmeta[gearName]
-                        if not meta then continue end
-                        if not hasaccessshopfuncs[meta[1]]() then continue end
-
-                        local slotType = meta[2]
-
-                        if slotType == "planter" then
-                            if reallycanafford(allprices[gearName], true) then
-                                if not bestUpgrade or i > bestUpgrade.index then
-                                    bestUpgrade = { name = gearName:sub(1, -8) .. " Planter", index = i, shop = meta[1] }
+                        if table.find(owned, gearName) then
+                            local meta = gearmeta[gearName]
+                            if meta then
+                                local slotType = meta[2]
+                                if not highestOwnedPerSlot[slotType] or i > highestOwnedPerSlot[slotType] then
+                                    highestOwnedPerSlot[slotType] = i
                                 end
                             end
-                            continue
-                        end
-
-                        local current
-                        if slotType == "tool" then
-                            current = getclientstatcache("EquippedCollector")
-                        elseif slotType == "glider" then
-                            current = getclientstatcache("EquippedParachute")
-                        else
-                            current = getequippedforslottype(equipped, slotType)
-                        end
-
-                        local currentIndex = 0
-                        if current then
-                            for j, name in ipairs(v.value) do
-                                if name == current then currentIndex = j break end
-                            end
-                        end
-
-                        for j, name in ipairs(v.value) do
-                            if j <= currentIndex then continue end
-                            if table.find(owned, name) then
-                                local meta2 = gearmeta[name]
-                                if meta2 and meta2[2] == slotType then
-                                    currentIndex = j
-                                end
-                            end
-                        end
-
-                        if i <= currentIndex then continue end
-
-                        if not reallycanafford(allprices[gearName], true) then
-                            if not firstUnaffordable then
-                                firstUnaffordable = gearName
-                            end
-                            continue
-                        end
-
-                        if not bestUpgrade or i > bestUpgrade.index then
-                            bestUpgrade = { name = gearName, index = i, shop = meta[1] }
                         end
                     end
 
-                    if bestUpgrade then
-                        print("Buy:", bestUpgrade.name)
-                        buygear(bestUpgrade.name, bestUpgrade.shop)
-                        _earlybreak = true
-                    elseif firstUnaffordable then
-                        reallycanafford(allprices[firstUnaffordable])
+                    for i, gearName in ipairs(v.value) do
+                        local meta = gearmeta[gearName]
+                        if not meta then continue end
+                        local slotType = meta[2]
+                        -- skip if below or equal to highest owned in this slot
+                        if highestOwnedPerSlot[slotType] and i <= highestOwnedPerSlot[slotType] then continue end
+                        local buyName = slotType == "planter" and gearName:sub(1, -8) .. " Planter" or gearName
+                        if not hasaccessshopfuncs[meta[1]]() then
+                            allvars.nextautoprogitem = "[NOT ENOUGH BEES]"
+                            continue
+                        end
+
+                        if reallycanafford(allprices[gearName], true) then
+                            allvars.nextautoprogitem = buyName
+                            print("Buy:", buyName)
+                            buygear(buyName, meta[1])
+                            _earlybreak = true
+                        else
+                            allvars.nextautoprogitem = buyName
+                            reallycanafford(allprices[gearName])
+                        end
+                        break
                     end
                 end
             end
@@ -4533,15 +4575,111 @@ function mainautofarmloop()
         avoidmobs(fieldtofarm)
         collecttokensonfield(fieldtofarm)
         avoidmobs(fieldtofarm)
-        if root.Position ~= oldrootposition then
+        if not allvars.api.magnitude(root.Position, oldrootposition, 4) then
             timewithoutmovement = tick()
         end
-        if tick() - timewithoutmovement > 5 then
+        if tick() - timewithoutmovement > 2 then
             timewithoutmovement = tick()
             humanoid:MoveTo(randompoint(fieldtofarm))
         end
         task.wait()
     end
+end
+
+function buildwebhookbody()
+    local embed1 = {
+        fields = {},
+        color = 0x1cc3e3,
+        author = {
+            name = "Lunar - Honey Update",
+            icon_url = "https://github.com/lunar-repo/pic/raw/main/Reindeer_Antlers.png"
+        }
+    }
+
+    local embed2 = {
+        fields = {},
+        color = 0x1cc3e3,
+        author = {
+            name = "Lunar - Auto Progression",
+            icon_url = "https://github.com/lunar-repo/pic/raw/main/Reindeer_Antlers.png"
+        }
+    }
+
+    local embeds = {embed1}
+
+    table.insert(embed1.fields, {
+        name = "<:honey:1514946024521601054> Honey Per Hour",
+        value = allvars.honeyperhourstring,
+        inline = true
+    })
+
+    table.insert(embed1.fields, {
+        name = "<:honey:1514946024521601054> Session Honey",
+        value = allvars.sessionhoneystring,
+        inline = true
+    })
+
+    table.insert(embed1.fields, {
+        name = "<:honey:1514946024521601054> Current Honey",
+        value = truncate(getclientstatcache("Honey")),
+        inline = true
+    })
+
+    table.insert(embed1.fields, {
+        name = "<:time:1514946582884126820> Elapsed Time",
+        value = allvars.elapsedtimestring,
+        inline = true
+    })
+
+    table.insert(embed2.fields, {
+        name = "<:tool:1514948429028261898> Next Item",
+        value = allvars.nextautoprogitemstring:gsub("Next Item: ", ""),
+        inline = true
+    })
+
+    table.insert(embed2.fields, {
+        name = "<:hiveslot:1514948404848103556> Next Hive Slot",
+        value = allvars.nexthiveslotstring:gsub("Next Hive Slot: ", ""),
+        inline = true
+    })
+
+    table.insert(embed2.fields, {
+        name = "<:basicegg:1514948357120856104> Next Egg",
+        value = allvars.nextbasiceggstring:gsub("Next Egg: ", ""),
+        inline = true
+    })
+
+    table.insert(embed2.fields, {
+        name = "<:puppy:1514957876580581466> Bees",
+        value = #getbeesdata().all,
+        inline = true
+    })
+
+    if allvars.autoprogress then
+        table.insert(embeds, embed2)
+    end
+
+    local body = {
+        embeds = embeds
+    }
+
+    return body
+end
+
+function builddisconnectbody(reason)
+    local body = {
+        embeds = {{
+            fields = {},
+            color = 0xd62c29,
+            author = {
+                name = "Lunar - Disconnected",
+                icon_url = "https://github.com/lunar-repo/pic/raw/main/Reindeer_Antlers.png"
+            },
+            description = reason
+        }}
+    }
+
+    return body
 end
 
 local function deathhandler(char)
@@ -4597,8 +4735,73 @@ local function makeslider(tab,name,flag,range,increment,suffix,callback,default)
     })
 end
 
+local function maketextbox(tab,name,flag,placeholder,removeafterfocus,callback,default)
+    tab:CreateInput({
+        Name = name,
+        CurrentValue = default or "",
+        PlaceholderText = placeholder,
+        RemoveTextAfterFocusLost = removeafterfocus,
+        Flag = flag,
+        Callback = callback
+    })
+end
+
 -- create tabs
+local homeTab = window:CreateTab("Information", "trending-up")
 local autofarmTab = window:CreateTab("Auto-Farm", "blend")
+local webhookTab = window:CreateTab("Webhook", getcustomasset("Lunar_Bss-Discord-Symbol-White.png"))
+
+-- home info stuff
+homeTab:CreateSection("Statistics")
+local elapsedtimelabel = homeTab:CreateLabel("Elapsed Time: N/A")
+local honeyperhourlabel = homeTab:CreateLabel("Honey Per Hour: N/A")
+local sessionhoneylabel = homeTab:CreateLabel("Session Honey: N/A")
+homeTab:CreateSection("Auto Progression")
+local autoprogtasknowlabel = homeTab:CreateLabel("Next Item: N/A")
+local nexthiveslotlabel = homeTab:CreateLabel("Next Hive Slot: N/A")
+local nextbasicegg = homeTab:CreateLabel("Next Egg: N/A")
+
+task.spawn(function()
+    while true do
+        local hiveslotnum = (getclientstatcache("Totals", "Purchases", "HiveSlots") or 0) + 1
+        local boughtbasiceggs = getclientstatcache("Totals", "Purchases", "Eggs", "Basic") or 1
+        local nextbasiceggprice = getEggPrice(boughtbasiceggs)
+        local currenthoney = getclientstatcache("Honey")
+        local timepassed = math.round(os.clock() - allvars.timeatload)
+	    local honeyearned = currenthoney - allvars.starthoney
+        local honeyperhournum = math.floor(honeyearned / timepassed) * 3600
+        local elapsedtimestring = truncatetime(os.clock() - allvars.timeatload)
+        local honeyperhourstring = truncate(honeyperhournum)
+        local sessionhoneynum = math.floor(currenthoney - allvars.starthoney)
+        local sessionhoneystring = truncate(sessionhoneynum)
+        local nextautoprogitemstring = "Next Item: " .. (allvars.nextautoprogitem or "N/A")
+        local nexthiveslotstring = "Next Hive Slot: " .. truncate(currenthoney) .. "/" .. truncate(getnexthiveslotprice()) .. " (#" .. hiveslotnum .. ")"
+        local nextbasiceggstring = "Next Egg: " .. truncate(currenthoney) .. "/" .. truncate(nextbasiceggprice)
+
+        autoprogtasknowlabel:Set(nextautoprogitemstring)
+        nexthiveslotlabel:Set(nexthiveslotstring)
+        nextbasicegg:Set(nextbasiceggstring)
+        elapsedtimelabel:Set(string.format("Elapsed Time: %s", elapsedtimestring))
+        honeyperhourlabel:Set(string.format("Honey Per Hour: %s", honeyperhourstring))
+        sessionhoneylabel:Set(string.format("Session Honey: %s", sessionhoneystring))
+
+        allvars.elapsedtimestring = elapsedtimestring
+        allvars.honeyperhourstring = honeyperhourstring
+        allvars.sessionhoneystring = sessionhoneystring
+        allvars.nextautoprogitemstring = nextautoprogitemstring
+        allvars.nexthiveslotstring = nexthiveslotstring
+        allvars.nextbasiceggstring = nextbasiceggstring
+
+        if allvars.discordwebhookenabled and tick() - allvars.lastdiscordupdate >= (allvars.webhookinterval * 60) and allvars.discordwebhookurl:match("(https://discord%.com)") and not allvars.disconnected then
+            allvars.lastdiscordupdate = tick()
+            task.spawn(function()
+                supersaferequest(allvars.discordwebhookurl, "POST", nil, HttpService:JSONEncode(buildwebhookbody()))
+            end)
+        end
+
+        task.wait(0.1)
+    end
+end)
 
 -- autofarm toggles
 local rebooting = false
@@ -4683,13 +4886,30 @@ maketoggle(autofarmTab, "Auto Sprinkler", "autosprinkler", function(s)
     allvars.autosprinkler=s
     if not s then tasks.delete("placing sprinklers") end
 end)
-maketoggle(autofarmTab, "Auto Progression", "autoprogress", function(s)
-    allvars.autoprogress=s
-end)
 makedropdown(autofarmTab, "Field To Farm", "farmingfield", sortedfields, false, function(s)
     disableall()
     allvars.farmingfield = s[1]
 end, {"Sunflower Field"})
+
+-- auto prog
+autofarmTab:CreateSection("Auto Progression")
+maketoggle(autofarmTab, "Auto Progression", "autoprogress", function(s)
+    allvars.autoprogress=s
+    if not s then allvars.nextautoprogitem = nil end
+end)
+local rawcraftrecipenames = {
+    "Red Extract", "Blue Extract", "Glue", "Enzymes", "Oil", "Gumdrops",
+    "Moon Charm", "Glitter", "Star Jelly", "Tropical Drink", "Purple Potion",
+    "Super Smoothie", "Soft Wax", "Hard Wax", "Caustic Wax", "Swirled Wax",
+    "Field Dice", "Smooth Dice", "Loaded Dice", "Turpentine"
+}
+allvars.allowedcrafts = rawcraftrecipenames
+makedropdown(autofarmTab, "Allowed Materials To Craft", "allowedcraftingmaterials", rawcraftrecipenames, true, function(s)
+    allvars.allowedcrafts = {}
+    for i, _ in pairs(s) do
+        table.insert(allvars.allowedcrafts, i)
+    end
+end, allvars.allowedcrafts)
 
 -- convert stuff
 autofarmTab:CreateSection("Converting")
@@ -4716,6 +4936,19 @@ maketoggle(autofarmTab, "Farm Fireflies", "farmfireflies", function(s)
     allvars.farmfireflies=s
 end)
 
+-- webhook stuff
+maketoggle(webhookTab, "Enable Webhook", "discordwebhookenabled", function(s)
+    allvars.discordwebhookenabled=s
+    if s then allvars.lastdiscordupdate = 0 end
+end)
+maketextbox(webhookTab, "Webhook URL", "discordwebhookurl", "https://discord.com/api/webhooks/", false, function(s)
+    allvars.discordwebhookurl = s
+    allvars.lastdiscordupdate = 0
+end)
+makeslider(webhookTab, "Send Update Every X Minutes", "convertballoonatx", {1, 60}, 1, "", function(s)
+    allvars.webhookinterval=s
+end, 5)
+
 RunService.RenderStepped:Connect(function()
 	if not allvars.isrunning then return end
 	if allvars.autodig then
@@ -4737,4 +4970,40 @@ end
 LocalPlayer.Idled:Connect(function()
     virtualuser:CaptureController()
     virtualuser:ClickButton2(Vector2.new())
+end)
+
+function serverhop()
+    local servers = {}
+    local req = supersaferequest("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100&excludeFullGames=true").Body
+    local body = HttpService:JSONDecode(req)
+
+    if body and body.data then
+        for i, v in next, body.data do
+            if type(v) == "table" and tonumber(v.playing) and tonumber(v.maxPlayers) and v.playing < v.maxPlayers and v.id ~= game.JobId then
+                table.insert(servers, 1, v.id)
+            end
+        end
+    end
+
+    if #servers > 0 then
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, servers[math.random(1, #servers)], game:GetService("Players").LocalPlayer)
+    else
+        return warn("Couldn't find a server.")
+    end
+end
+
+GuiService.ErrorMessageChanged:Connect(function(message)
+    local text = CoreGui:WaitForChild("RobloxPromptGui"):WaitForChild("promptOverlay"):WaitForChild("ErrorPrompt"):WaitForChild("MessageArea"):WaitForChild("ErrorFrame"):WaitForChild("ErrorMessage").Text
+    warn(text)
+    if text:lower():find("disconnect") or text:lower():find("kick") or text:lower():find("same account") or text:lower():find("shutdown") then
+        task.spawn(function()
+            allvars.disconnected = true
+            queue_on_teleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/lunar-repo/beeswarm/refs/heads/main/test.lua'))()")
+            supersaferequest(allvars.discordwebhookurl, "POST", nil, HttpService:JSONEncode(builddisconnectbody(message)))
+            while true do
+                serverhop()
+                task.wait()
+            end
+        end)
+    end
 end)
