@@ -2985,7 +2985,8 @@ function getclientstatcache(...)
 end
 
 local tasks = {
-    tasks = {}
+    tasks = {},
+    events = {}
 }
 function tasks.add(name, func)
     if rawget(tasks.tasks, name) ~= nil then
@@ -3000,16 +3001,21 @@ function tasks.add(name, func)
         done:Fire()
     end)
     rawset(tasks.tasks, name, thread)
-    if finished then return done:Destroy(), rawset(tasks.tasks, name, nil) end
+    rawset(tasks.events, name, done)
+    if finished then return done:Destroy(), rawset(tasks.tasks, name, nil), rawset(tasks.events, name, nil) end
     done.Event:Wait()  -- resumes next frame the thread dies, no polling
     done:Destroy()
     rawset(tasks.tasks, name, nil)
+    rawset(tasks.events, name, nil)
 end
 function tasks.delete(name)
     local _task = tasks.tasks[tostring(name)]
     if not _task then return warn("Task \"" .. tostring(name) .. "\" doesn't exist") end
+    local event = tasks.events[tostring(name)]
     task.cancel(_task)
+    event:Fire()
     tasks.tasks[name] = nil
+    tasks.events[name] = nil
     print("Task \"" .. tostring(name) .. "\" ended")
 end
 function tasks.deleteall()
@@ -4341,13 +4347,13 @@ function buildautoprogbuybody(name)
     local body = {
         embeds = {{
             fields = {},
-            color = 0xFF8585,
+            color = 0x4AFF8C,
             author = {
                 name = "Lunar - Auto Progression",
                 icon_url = "https://github.com/lunar-repo/pic/raw/main/Reindeer_Antlers.png"
             },
             description = name,
-            title = "<:tool:1514948429028261898> Next Item Purchasing Item"
+            title = "<:tool:1514948429028261898> Purchasing Item"
         }}
     }
 
@@ -4428,9 +4434,10 @@ function farmfireflies()
                     table.remove(fields, i)
                 end
             end
-			if fireflyfield and v.BodyVelocity.Velocity == Vector3.zero and allvars.fireflyfield ~= fireflyfield then
+			if fireflyfield and v.BodyVelocity.Velocity == Vector3.zero and allvars.fireflyfield ~= fireflyfield and (v.Position - fireflyfield.Position).Y < 3 then
                 allvars.fireflyfield = fireflyfield
                 if not table.find(fields, fireflyfield.Name) then
+                    allvars.fireflyfield = nil
                     return {}
                 end
 				print("Fireflies in the " .. tostring(fireflyfield))
@@ -4567,6 +4574,7 @@ function mainautofarmloop()
         local root = allvars.api.getRoot()
         local humanoid = allvars.api.getHumanoid()
         if not root or not humanoid then task.wait() continue end
+        local oldrootposition = root.Position
         trytoconvert()
         allvars.fieldtofarm = workspace.NewFlowerZones[allvars.farmingfield]
 
@@ -4766,7 +4774,6 @@ function mainautofarmloop()
             placesprinklers(fieldtofarm)
             allvars.redosprinklers = false
         end
-        local oldrootposition = root.Position
         avoidmobs(fieldtofarm)
         collecttokensonfield(fieldtofarm)
         avoidmobs(fieldtofarm)
