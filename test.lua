@@ -3,6 +3,12 @@
   report bugs in discord: [placeholder]
 ]]
 
+if _G.LUNAR_LOADING then return warn("[Lunar] Loading still in progress") end
+_G.LUNAR_LOADING = true
+print(pcall(function()
+    getgenv().LUNAR_UNLOAD()
+end))
+
 local ContentProvider = game:GetService("ContentProvider")
 local TeleportService = game:GetService("TeleportService")
 local GuiService = game:GetService("GuiService")
@@ -70,7 +76,7 @@ if not isfile("Lunar_Bss-Discord-Symbol-White.png") then
 end
 
 -- entire gui module
-local SaveFileName = "default.json"
+local SaveFileName = "lunar-default.json"
 local mainuimodule = (function()
     local SaveTable = {}
     if isfile(SaveFileName) then
@@ -196,7 +202,7 @@ local mainuimodule = (function()
         local Mouse		= LocalPlayer:GetMouse()
         local ipairs,pairs	= ipairs,pairs
 
-        wait() --Because we're about to call Mouse.ViewSizeY, we wait() to ensure the property has actually updated
+        wait()
 
         local DEFAULT_SENS,DEFAULT_FRICT = Mouse.ViewSizeY/27, 0.78
 
@@ -204,8 +210,6 @@ local mainuimodule = (function()
         local Objects = {}
         local ScrollBarHolder
         local DraggingBar = false
-
-        --PC only
         if not UIS.TouchEnabled then
 
             ScrollBarHolder = Instance.new("ScreenGui")
@@ -220,7 +224,6 @@ local mainuimodule = (function()
                             Frame.CanvasPosition = Vector2.new(Frame.CanvasPosition.X+Info.Velocity,Frame.CanvasPosition.Y)
 
                             if math.abs(Info.LastPos-Frame.CanvasPosition.X) == 0 then
-                                --Hit end, remove velocity so scrolling back responds instantly
                                 Info.Velocity = 0
                             end
                             Info.LastPos = Frame.CanvasPosition.X
@@ -228,7 +231,6 @@ local mainuimodule = (function()
                             Frame.CanvasPosition = Vector2.new(Frame.CanvasPosition.X,Frame.CanvasPosition.Y+Info.Velocity)
 
                             if math.abs(Info.LastPos-Frame.CanvasPosition.Y) == 0 then
-                                --Hit end, remove velocity so scrolling back responds instantly
                                 Info.Velocity = 0
                             end
                             Info.LastPos = Frame.CanvasPosition.Y
@@ -237,7 +239,6 @@ local mainuimodule = (function()
                 end
             end)
 
-            --Trackpad support
             UIS.PointerAction:Connect(function(Wheel,Pan,Pinch,GP)
                 if not DraggingBar then
                     local HoveredObjects = PlayerGui:GetGuiObjectsAtPosition(Mouse.X, Mouse.Y)	
@@ -252,7 +253,6 @@ local mainuimodule = (function()
                 end
             end)
 
-            --Mouse wheel support
             CAS:BindActionAtPriority("SmoothScroll", function(Name,State,Input)
 
                 if DraggingBar then return Enum.ContextActionResult.Pass end
@@ -275,8 +275,6 @@ local mainuimodule = (function()
             end, false, 8000, Enum.UserInputType.MouseWheel)
 
         end
-
-        -- This visibility tracker is taken from Crazyman32's MouseOver module (August 18, 2018)
 
         local OnScreenTracker = {}
         OnScreenTracker.__index = OnScreenTracker
@@ -354,9 +352,6 @@ local mainuimodule = (function()
 
 
         local function CreateBar(Frame,Axis)
-
-            --Safety checks
-
             Axis = Axis or "Y"
             if not (Frame and typeof(Frame) == "Instance" and Frame.ClassName == "ScrollingFrame") then
                 warn("Invalid frame to create custom bar")
@@ -369,7 +364,6 @@ local mainuimodule = (function()
             Bar.BackgroundTransparency = 1
             Bar.Visible = Objects[Frame].Visibility.Visible
 
-            --Localize frame stuff
             local absSize,absPos,scrollThick = Frame.AbsoluteSize,Frame.AbsolutePosition,Frame.ScrollBarThickness
 
             local BarDrag
@@ -418,14 +412,12 @@ local mainuimodule = (function()
             end)
 
             if Axis == "X" then
-                --Initial bar
                 Bar.Size = UDim2.new(0,absSize.X,0,scrollThick)
                 Bar.Position = UDim2.new(
                     0,absPos.X,
                     0,absPos.Y+absSize.Y-scrollThick
                 )
             else
-                --Initial bar
                 Bar.Size = UDim2.new(0,scrollThick,0,absSize.Y)
                 Bar.Position = UDim2.new(
                     0,Frame.VerticalScrollBarPosition == Enum.VerticalScrollBarPosition.Right and absPos.X+absSize.X-scrollThick or absPos.X,
@@ -437,21 +429,16 @@ local mainuimodule = (function()
             Updater = Frame.Changed:Connect(function(Prop)
                 if Objects[Frame] then
                     if Frame:FindFirstAncestorWhichIsA("GuiBase2d") then
-                        --Ensure bar stays updated
-
                         if Prop == "AbsoluteSize" or Prop == "AbsolutePosition" or Prop == "AbsolutePosition" or Prop == "CanvasSize" or Prop == "ScrollBarThickness" then
-                            --Update frame stuff
                             absSize,absPos,scrollThick = Frame.AbsoluteSize,Frame.AbsolutePosition,Frame.ScrollBarThickness
 
                             if Axis == "X" then
-                                --Update bar
                                 Bar.Size = UDim2.new(0,absSize.X,0,scrollThick)
                                 Bar.Position = UDim2.new(
                                     0,absPos.X,
                                     0,absPos.Y+absSize.Y-scrollThick
                                 )
                             else
-                                --Update bar
                                 Bar.Size = UDim2.new(0,scrollThick,0,absSize.Y)
                                 Bar.Position = UDim2.new(
                                     0,Frame.VerticalScrollBarPosition == Enum.VerticalScrollBarPosition.Right and absPos.X+absSize.X-scrollThick or absPos.X,
@@ -477,21 +464,9 @@ local mainuimodule = (function()
 
         local SmoothScroll = {}
 
-        --[[**
-            Sets a ScrollingFrame to scroll smoothly
-                    
-            @param Frame [ScrollingFrame] The ScrollingFrame object to apply smoothing to
-            @param Sensitivity [Optional Number] How many pixels it scrolls per wheel turn
-            @param Friction [Optional Number] What the velocity is multiplied by each frame
-            @param Inverted [Optional Bool] Inverts the scrolling direction
-            @param Axis [Optional String] "X" or "Y". If left out, will default to whichever Axis is scrollable or "Y" if both are valid
-                    
-            @returns nil		
-        **--]]
         function SmoothScroll.Enable(Frame, Sensitivity, Friction, Inverted, Axis)
-            if not UIS.TouchEnabled then
+            if UIS.MouseEnabled and not UIS.TouchEnabled then
 
-                --Safety check
                 if not (Frame and typeof(Frame) == "Instance" and Frame.ClassName == "ScrollingFrame") then
                     warn("Invalid frame to smooth")
                     return
@@ -536,7 +511,6 @@ local mainuimodule = (function()
 
 
                     if Axis and (Axis == "X" or Axis == "Y") then
-                        --Leave Axis as defined by param
                     else
                         Axis = "Y" --Default to Y
                         if (Frame.CanvasSize.Y.Offset>0 or Frame.CanvasSize.Y.Scale>0) then
@@ -563,41 +537,25 @@ local mainuimodule = (function()
                     CreateBar(Frame, "X")
                     CreateBar(Frame, "Y")
                 else
-                    --Already enabled, so just update the new settings passed
                     Objects[Frame].Sens		= math.clamp(type(Sensitivity)=="number" and Sensitivity or DEFAULT_SENS,0.01,99999999999999999);
                     Objects[Frame].Frict	= math.clamp(type(Friction)=="number" and Friction or DEFAULT_FRICT,0.2,0.99);
                     Objects[Frame].Inverted	= Inverted
                 end
-
-            else
-                warn("SmoothScroll only works for PC")
             end
         end
 
-        --[[**
-            Sets a ScrollingFrame to scroll normally
-                    
-            @param Frame [ScrollingFrame] The ScrollingFrame object to remove smoothing from
-                    
-            @returns nil		
-        **--]]
         function SmoothScroll.Disable(Frame)
 
             if Objects[Frame] then
-                -- Return default behavior
                 Frame.ScrollingEnabled = true
-                -- Disconnect mouse events and desc events
                 for i,c in ipairs(Objects[Frame].Connections) do
                     c:Disconnect()
                 end
-                -- Destroy tracker
                 Objects[Frame].Visibility:Destroy()
-                -- Return prior Active properties
                 for desc,a in pairs(Objects[Frame].Actives) do
                     desc.Active = a
                 end
 
-                -- Remove from update queue
                 Objects[Frame] = nil
             end
 
@@ -1296,18 +1254,18 @@ local mainuimodule = (function()
 
                 if (SaveTable[Flag] or {}).CurrentValue == true then
                     F:Set(true)
+                else
+                    if CurrentValue then
+                        animation()
+                        task.spawn(function()
+                            Callback(true)
+                        end)
+                    end
                 end
                 
                 Click.MouseButton1Click:Connect(function()
                     F:Set(not CurrentValue)
                 end)
-                
-                if CurrentValue then
-                    animation()
-                    task.spawn(function()
-                        Callback(true)
-                    end)
-                end
                 
                 Click.InputBegan:Connect(function(input)
                     if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -1324,6 +1282,8 @@ local mainuimodule = (function()
                         TweenService:Create(ball, TweenInfo.new(0.15, Enum.EasingStyle.Sine), {Size = UDim2.new(0, 16, 0, 16)}):Play()
                     end
                 end)
+
+                return F
             end
             
             function Tab:CreateButton(Properties)
@@ -1496,6 +1456,13 @@ local mainuimodule = (function()
                         Fill.Size = targetFill
                         Ball.Position = targetBall
                     end
+                end
+
+                if SaveTable[Flag] then
+                    CurrentValue = SaveTable[Flag].CurrentValue
+                    task.spawn(function()
+                        Callback(CurrentValue)
+                    end)
                 end
 
                 -- Set initial visuals without callback
@@ -2147,6 +2114,14 @@ local mainuimodule = (function()
                         Callback(Text)
                     end)
                 end)
+
+                if SaveTable[Flag] then
+                    Window.Flags[Flag] = SaveTable[Flag]
+                    TextBox.Text = SaveTable[Flag].CurrentValue
+                    task.spawn(function()
+                        Callback(TextBox.Text)
+                    end)
+                end
                 
                 RunService.RenderStepped:Connect(function()
                     local textWidth = math.max(30, TextBox.TextBounds.X + 50)
@@ -2705,16 +2680,56 @@ local mainuimodule = (function()
         end)
     end
 
-    function Library:Notify(Properties)
-        local Title = Properties.Title
-        local Text = Properties.Content
-        local Duration = Properties.Duration
-        local Image = Properties.Image
-        print("----------------")
-        print("notification: " .. Duration .. "s (" .. (Image or "no") .. "-image)")
-        print(Title)
-        print("----------------")
-        print(Text)
+    function Library:Notify(text)
+        if not getgenv().MPPNotifsUI then
+            local ScreenGui = Instance.new("ScreenGui")
+            local Notification = Instance.new("Frame")
+            local UICorner = Instance.new("UICorner")
+            local TextLabel = Instance.new("TextLabel")
+            ScreenGui.Parent = Parent
+            ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+            ScreenGui.Name = "MPPNotifsUI"
+            Notification.Name = "Notification"
+            Notification.Parent = ScreenGui
+            Notification.AnchorPoint = Vector2.new(1, 1)
+            Notification.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+            Notification.BackgroundTransparency = 0.300
+            Notification.BorderColor3 = Color3.fromRGB(0, 0, 0)
+            Notification.BorderSizePixel = 0
+            Notification.Position = UDim2.new(1, -30, 1, -30)
+            Notification.Size = UDim2.new(0, 200, 0, 50)
+            Notification.Visible = false
+            UICorner.Parent = Notification
+            UICorner.CornerRadius = UDim.new(0, 12)
+            TextLabel.Parent = Notification
+            TextLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+            TextLabel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            TextLabel.BackgroundTransparency = 1.000
+            TextLabel.BorderColor3 = Color3.fromRGB(0, 0, 0)
+            TextLabel.BorderSizePixel = 0
+            TextLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+            TextLabel.Size = UDim2.new(0, 200, 0, 50)
+            TextLabel.Font = Enum.Font.Arial
+            TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            TextLabel.TextSize = 16.000
+            TextLabel.TextWrapped = true
+            getgenv().MPPNotifsUI = ScreenGui
+        end
+        local Notification = getgenv().MPPNotifsUI.Notification
+        Notification.Visible = true 
+        if notifTask then
+            notifTask = task.cancel(notifTask)
+        end
+        notifTask = task.delay(7, function()
+            Notification.Visible = false
+        end)
+        Notification.TextLabel.Text = text
+        task.spawn(function()
+            while Notification.TextLabel.Text == text and Notification.Visible do
+                Notification.Size = UDim2.new(0, math.clamp(Notification.TextLabel.TextBounds.X + 80, 0, 300), 0, Notification.TextLabel.TextBounds.Y + 29)
+                wait(0.1)
+            end
+        end)
     end
 
     return Library
@@ -2974,11 +2989,21 @@ local tasks = {
 }
 function tasks.add(name, func)
     if rawget(tasks.tasks, name) ~= nil then
-        if coroutine.status(rawget(tasks.tasks, name)) ~= "dead" then return end
+        return
     end
-    local thread = task.spawn(func)
+    local done = Instance.new("BindableEvent")
+    local finished = false
+    local thread = task.spawn(function()
+        local s,r=pcall(func)
+        if not s then warn("task error (" .. name .. ")", r) end
+        finished = true
+        done:Fire()
+    end)
     rawset(tasks.tasks, name, thread)
-    repeat task.wait() until coroutine.status(thread) == "dead"
+    if finished then return done:Destroy(), rawset(tasks.tasks, name, nil) end
+    done.Event:Wait()  -- resumes next frame the thread dies, no polling
+    done:Destroy()
+    rawset(tasks.tasks, name, nil)
 end
 function tasks.delete(name)
     local _task = tasks.tasks[tostring(name)]
@@ -3020,6 +3045,7 @@ local allvars = {
     redosprinklers = true,
     sprinklefield = nil,
     allowedcrafts = {},
+    isloaded = true,
     autoprogjson = [[
         [
             {
@@ -3411,7 +3437,7 @@ function disablenoclip()
 	table.clear(nocliporiginal)
 end
 
-function tweento(vect, speed, caveavoid, force, precise)
+function tweento(vect, speed, caveavoid, force, precise, aligncf)
 	Pit.CanTouch = false
 	HiveHubPortal.CanTouch = false
 	RetroPortal.CanTouch = false
@@ -3448,12 +3474,12 @@ function tweento(vect, speed, caveavoid, force, precise)
 	tweeningposition.Position = vect
 	tweeningposition.Parent = root
 
-	local tweeningorientation = Instance.new("AlignOrientation")
-	tweeningorientation.Attachment0 = root.RootAttachment
-	tweeningorientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
-	tweeningorientation.RigidityEnabled = true
-	tweeningorientation.CFrame = root.CFrame
-	tweeningorientation.Parent = root
+    local tweeningorientation = Instance.new("AlignOrientation")
+    tweeningorientation.Attachment0 = root.RootAttachment
+    tweeningorientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
+    tweeningorientation.RigidityEnabled = true
+    tweeningorientation.CFrame = aligncf or root.CFrame
+    tweeningorientation.Parent = root
 
 	_G.nocliptween = RunService.RenderStepped:Connect(function()
 		enablenoclip()
@@ -4032,11 +4058,11 @@ function shouldconvertnow()
 end
 
 function trytoconvert()
-    tasks.add("convert handler", function() -- it's not really a handler is it?
+    tasks.add("convert handler", function()
         local toconvert = shouldconvertnow()
         if toconvert then
             print(toconvert) -- Prints the reason of converting
-            local hivepos = (LocalPlayer.SpawnPos.Value + Vector3.new(0, 0, 5)).Position
+            local hivepos = (LocalPlayer.SpawnPos.Value + Vector3.new(0, 0, 9)).Position
             local root = allvars.api.getRoot()
             while root and root.Parent and allvars.isrunning and allvars.autofarm and allvars.autoconvert do
                 local shouldistopnow = false
@@ -4050,7 +4076,7 @@ function trytoconvert()
                     end
                 end
                 if shouldistopnow then break end
-                if not allvars.api.magnitude(root.Position, hivepos, 9) then
+                if not allvars.api.magnitude(root.Position, hivepos, 6) then
                     tweento(hivepos)
                 end
                 local startedpressing = tick()
@@ -4074,8 +4100,8 @@ function trytoconvert()
 end
 
 function canCollectToken(token)
-	return (not allvars.api.magnitude(allvars.api.getRoot().Position * Vector3.new(1, 0, 1), token.Position * Vector3.new(1, 0, 1), 4))
-        and (allvars.api.getRoot().Position * Vector3.new(0, 1, 0) - token.Position * Vector3.new(0, 1, 0)).Y <= 6
+	return isfield(token.Position) and (not allvars.api.magnitude(allvars.api.getRoot().Position * Vector3.new(1, 0, 1), token.Position * Vector3.new(1, 0, 1), 2))
+        and (token.Position - isfield(token.Position).Position).Y <= 10 and (token.Position - isfield(token.Position).Position).Y >= 2
 end
 
 function farmobj(part, farmuntilgone, parttowait)
@@ -4197,13 +4223,152 @@ function randompoint(part)
     return cf:PointToWorldSpace(localPos)
 end
 
-function ismonsteronfield(field)
-    for _, v in pairs(workspace.Monsters:GetChildren()) do
-        if v.Name:find("Vicious") then continue end
-        if v:FindFirstChild("HumanoidRootPart") and isfield(v.HumanoidRootPart.Position) == field then
-            return true
-        end
+
+function buildwebhookbody()
+    local embed1 = {
+        fields = {},
+        color = 0x1cc3e3,
+        author = {
+            name = "Lunar - Honey Update",
+            icon_url = "https://github.com/lunar-repo/pic/raw/main/Reindeer_Antlers.png"
+        }
+    }
+
+    local embed2 = {
+        fields = {},
+        color = 0x1cc3e3,
+        author = {
+            name = "Lunar - Auto Progression",
+            icon_url = "https://github.com/lunar-repo/pic/raw/main/Reindeer_Antlers.png"
+        }
+    }
+
+    local embeds = {embed1}
+
+    table.insert(embed1.fields, {
+        name = "<:honey:1514946024521601054> Honey Per Hour",
+        value = allvars.honeyperhourstring,
+        inline = true
+    })
+
+    table.insert(embed1.fields, {
+        name = "<:honey:1514946024521601054> Session Honey",
+        value = allvars.sessionhoneystring,
+        inline = true
+    })
+
+    table.insert(embed1.fields, {
+        name = "<:honey:1514946024521601054> Current Honey",
+        value = truncate(getclientstatcache("Honey")),
+        inline = true
+    })
+
+    table.insert(embed1.fields, {
+        name = "<:time:1514946582884126820> Elapsed Time",
+        value = allvars.elapsedtimestring,
+        inline = true
+    })
+
+    table.insert(embed2.fields, {
+        name = "<:tool:1514948429028261898> Next Item",
+        value = allvars.nextautoprogitemstring:gsub("Next Item: ", ""),
+        inline = true
+    })
+
+    table.insert(embed2.fields, {
+        name = "<:hiveslot:1514948404848103556> Next Hive Slot",
+        value = allvars.nexthiveslotstring:gsub("Next Hive Slot: ", ""),
+        inline = true
+    })
+
+    table.insert(embed2.fields, {
+        name = "<:basicegg:1514948357120856104> Next Egg",
+        value = allvars.nextbasiceggstring:gsub("Next Egg: ", ""),
+        inline = true
+    })
+
+    table.insert(embed2.fields, {
+        name = "<:puppy:1514957876580581466> Bees",
+        value = #getbeesdata().all,
+        inline = true
+    })
+
+    if allvars.autoprogress then
+        table.insert(embeds, embed2)
     end
+
+    local body = {
+        embeds = embeds
+    }
+
+    return body
+end
+
+function builddisconnectbody(reason)
+    local body = {
+        embeds = {{
+            fields = {},
+            color = 0xd62c29,
+            author = {
+                name = "Lunar - Disconnected",
+                icon_url = "https://github.com/lunar-repo/pic/raw/main/warn.png"
+            },
+            description = reason
+        }}
+    }
+
+    return body
+end
+
+function builddeathbody()
+    local deathinfield = allvars.api.getRoot() and isfield(allvars.api.getRoot().Position)
+    local body = {
+        embeds = {{
+            fields = {},
+            color = 0xFF8585,
+            author = {
+                name = "Lunar - Died",
+                icon_url = "https://github.com/lunar-repo/pic/raw/main/Reindeer_Antlers.png"
+            },
+            description = (deathinfield and (":cry: You died in the " .. deathinfield.Name) or ":cry: You died") .. "."
+        }}
+    }
+
+    return body
+end
+
+function buildautoprogbuybody(name)
+    local body = {
+        embeds = {{
+            fields = {},
+            color = 0xFF8585,
+            author = {
+                name = "Lunar - Auto Progression",
+                icon_url = "https://github.com/lunar-repo/pic/raw/main/Reindeer_Antlers.png"
+            },
+            description = name,
+            title = "<:tool:1514948429028261898> Next Item Purchasing Item"
+        }}
+    }
+
+    return body
+end
+
+function buildfirefliesbody(field)
+    local body = {
+        embeds = {{
+            fields = {},
+            color = 0xFFF04A,
+            author = {
+                name = "Lunar - Fireflies",
+                icon_url = "https://static.wikia.nocookie.net/bee-swarm-simulator/images/0/06/FirefliesFlying.png/revision/latest?cb=20231204025707"
+            },
+            title = "Fireflies detected",
+            description = "In the " .. field
+        }}
+    }
+
+    return body
 end
 
 function avoidmobs(field)
@@ -4211,10 +4376,29 @@ function avoidmobs(field)
         if not allvars.autofarm or not allvars.isrunning then return end
         local humanoid = allvars.api.getHumanoid()
         if not humanoid or humanoid.Health <= 0 then return end
-        if ismonsteronfield(field) then
-            humanoid:MoveTo(field.Position)
-            while humanoid.Parent and ismonsteronfield(field) and task.wait() do
+
+        local monsterTarget = nil
+        for _, v in pairs(workspace.Monsters:GetChildren()) do
+            if v.Name:find("Vicious") then continue end
+            if v:FindFirstChild("HumanoidRootPart") and isfield(v.HumanoidRootPart.Position) == field and v:FindFirstChild("Target") and v.Target.Value == LocalPlayer.Character then
+                monsterTarget = v
+                break
+            end
+        end
+
+        if monsterTarget then
+            safewalk(field.Position, true)
+            local i = 0
+            while humanoid.Parent and monsterTarget and monsterTarget.Parent and task.wait() do
                 if not allvars.autofarm or not allvars.isrunning then return end
+                if field.Name == "Pine Tree Forest" then -- mantis being positioned in a wierd way that bees cannot attack unless close
+                    i = i + 1
+                    if i % 2 == 0 then
+                        safewalk(field.Position + Vector3.new(0, 0, 10), true)
+                    else
+                        safewalk(field.Position - Vector3.new(0, 0, 10), true)
+                    end
+                end
                 humanoid.Jump = true
                 task.wait(0.8)
             end
@@ -4246,10 +4430,15 @@ function farmfireflies()
             end
 			if fireflyfield and v.BodyVelocity.Velocity == Vector3.zero and allvars.fireflyfield ~= fireflyfield then
                 allvars.fireflyfield = fireflyfield
-                if table.find(fields, fireflyfield.Name) then
+                if not table.find(fields, fireflyfield.Name) then
                     return {}
                 end
 				print("Fireflies in the " .. tostring(fireflyfield))
+                task.spawn(function()
+                    if allvars.discordwebhookenabled and allvars.discordwebhookurl:match("(https://discord%.com)") then
+                        supersaferequest(allvars.discordwebhookurl, "POST", nil, HttpService:JSONEncode(buildfirefliesbody(fireflyfield.Name)))
+                    end
+                end)
 			end
 			if (fireflyfield and table.find(fields, fireflyfield.Name) and v.BodyVelocity.Velocity == Vector3.zero) or allvars.fireflyfield then
 				allvars.fieldtofarm = allvars.fireflyfield
@@ -4366,7 +4555,7 @@ function placesprinklers(field, samespot)
             task.wait(JUMP_TIME)
             hum.JumpPower = oldjp
             events.ClientCall("PlayerActivesCommand", {Name = "Sprinkler Builder"})
-            task.wait(NEXT)
+            if NEXT > 0 then task.wait(NEXT) end
         end
     end)
 end
@@ -4374,6 +4563,7 @@ end
 function mainautofarmloop()
     local timewithoutmovement = tick()
     while allvars.autofarm and allvars.isrunning do
+        local _test1 = tick()
         local root = allvars.api.getRoot()
         local humanoid = allvars.api.getHumanoid()
         if not root or not humanoid then task.wait() continue end
@@ -4538,6 +4728,11 @@ function mainautofarmloop()
                         if reallycanafford(allprices[gearName], true) then
                             allvars.nextautoprogitem = buyName
                             print("Buy:", buyName)
+                            task.spawn(function()
+                                if allvars.discordwebhookenabled and allvars.discordwebhookurl:match("(https://discord%.com)") then
+                                    supersaferequest(allvars.discordwebhookurl, "POST", nil, HttpService:JSONEncode(buildautoprogbuybody(buyName)))
+                                end
+                            end)
                             buygear(buyName, meta[1])
                             _earlybreak = true
                         else
@@ -4582,104 +4777,10 @@ function mainautofarmloop()
             timewithoutmovement = tick()
             humanoid:MoveTo(randompoint(fieldtofarm))
         end
+        local _test2 = tick() - _test1
+        --print("main iteration:",_test2)
         task.wait()
     end
-end
-
-function buildwebhookbody()
-    local embed1 = {
-        fields = {},
-        color = 0x1cc3e3,
-        author = {
-            name = "Lunar - Honey Update",
-            icon_url = "https://github.com/lunar-repo/pic/raw/main/Reindeer_Antlers.png"
-        }
-    }
-
-    local embed2 = {
-        fields = {},
-        color = 0x1cc3e3,
-        author = {
-            name = "Lunar - Auto Progression",
-            icon_url = "https://github.com/lunar-repo/pic/raw/main/Reindeer_Antlers.png"
-        }
-    }
-
-    local embeds = {embed1}
-
-    table.insert(embed1.fields, {
-        name = "<:honey:1514946024521601054> Honey Per Hour",
-        value = allvars.honeyperhourstring,
-        inline = true
-    })
-
-    table.insert(embed1.fields, {
-        name = "<:honey:1514946024521601054> Session Honey",
-        value = allvars.sessionhoneystring,
-        inline = true
-    })
-
-    table.insert(embed1.fields, {
-        name = "<:honey:1514946024521601054> Current Honey",
-        value = truncate(getclientstatcache("Honey")),
-        inline = true
-    })
-
-    table.insert(embed1.fields, {
-        name = "<:time:1514946582884126820> Elapsed Time",
-        value = allvars.elapsedtimestring,
-        inline = true
-    })
-
-    table.insert(embed2.fields, {
-        name = "<:tool:1514948429028261898> Next Item",
-        value = allvars.nextautoprogitemstring:gsub("Next Item: ", ""),
-        inline = true
-    })
-
-    table.insert(embed2.fields, {
-        name = "<:hiveslot:1514948404848103556> Next Hive Slot",
-        value = allvars.nexthiveslotstring:gsub("Next Hive Slot: ", ""),
-        inline = true
-    })
-
-    table.insert(embed2.fields, {
-        name = "<:basicegg:1514948357120856104> Next Egg",
-        value = allvars.nextbasiceggstring:gsub("Next Egg: ", ""),
-        inline = true
-    })
-
-    table.insert(embed2.fields, {
-        name = "<:puppy:1514957876580581466> Bees",
-        value = #getbeesdata().all,
-        inline = true
-    })
-
-    if allvars.autoprogress then
-        table.insert(embeds, embed2)
-    end
-
-    local body = {
-        embeds = embeds
-    }
-
-    return body
-end
-
-function builddisconnectbody(reason)
-    local body = {
-        embeds = {{
-            fields = {},
-            color = 0xd62c29,
-            author = {
-                name = "Lunar - Disconnected",
-                icon_url = "https://github.com/lunar-repo/pic/raw/main/Reindeer_Antlers.png"
-            },
-            description = reason
-        }}
-    }
-
-    return body
 end
 
 local function deathhandler(char)
@@ -4687,6 +4788,11 @@ local function deathhandler(char)
     local humanoid = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 4)
     if not humanoid then return end
     humanoid.Died:Once(function()
+        task.spawn(function()
+            if allvars.discordwebhookenabled and allvars.discordwebhookurl:match("(https://discord%.com)") then
+                supersaferequest(allvars.discordwebhookurl, "POST", nil, HttpService:JSONEncode(builddeathbody()))
+            end
+        end)
         warn("you died, killing all tasks")
         tasks.deleteall()
         disableall()
@@ -4695,7 +4801,7 @@ end
 
 deathhandler(LocalPlayer.Character)
 
-LocalPlayer.CharacterAdded:Connect(function(char)
+local respawnhandlerconnection = LocalPlayer.CharacterAdded:Connect(function(char)
 	repeat task.wait() until char.Parent == workspace
 	disableall()
 	claimhive()
@@ -4704,7 +4810,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 end)
 
 local function maketoggle(tab,name,flag,callback,default)
-    tab:CreateToggle({
+    return tab:CreateToggle({
         Name = name,
         CurrentValue = default,
         Flag = flag,
@@ -4713,7 +4819,7 @@ local function maketoggle(tab,name,flag,callback,default)
 end
 
 local function makedropdown(tab,name,flag,options,multi,callback,default)
-    tab:CreateDropdown({
+    return tab:CreateDropdown({
         Name = name,
         Options = options,
         CurrentOption = default or {},
@@ -4724,7 +4830,7 @@ local function makedropdown(tab,name,flag,options,multi,callback,default)
 end
 
 local function makeslider(tab,name,flag,range,increment,suffix,callback,default)
-    tab:CreateSlider({
+    return tab:CreateSlider({
         Name = name,
         Range = range,
         Increment = increment,
@@ -4736,7 +4842,7 @@ local function makeslider(tab,name,flag,range,increment,suffix,callback,default)
 end
 
 local function maketextbox(tab,name,flag,placeholder,removeafterfocus,callback,default)
-    tab:CreateInput({
+    return tab:CreateInput({
         Name = name,
         CurrentValue = default or "",
         PlaceholderText = placeholder,
@@ -4762,7 +4868,7 @@ local nexthiveslotlabel = homeTab:CreateLabel("Next Hive Slot: N/A")
 local nextbasicegg = homeTab:CreateLabel("Next Egg: N/A")
 
 task.spawn(function()
-    while true do
+    while allvars.isloaded do
         local hiveslotnum = (getclientstatcache("Totals", "Purchases", "HiveSlots") or 0) + 1
         local boughtbasiceggs = getclientstatcache("Totals", "Purchases", "Eggs", "Basic") or 1
         local nextbasiceggprice = getEggPrice(boughtbasiceggs)
@@ -4806,7 +4912,7 @@ end)
 -- autofarm toggles
 local rebooting = false
 autofarmTab:CreateSection("Autofarm Main")
-maketoggle(autofarmTab, "Autofarm", "autofarm", function(s)
+local autofarmtoggle = maketoggle(autofarmTab, "Autofarm", "autofarm", function(s)
     if s and rebooting then return end
     if not s then
         tasks.deleteall()
@@ -4917,6 +5023,9 @@ maketoggle(autofarmTab, "Convert Honey", "autoconvert", function(s)
     allvars.autoconvert=s
     if not s then tasks.delete("convert handler") end
 end, true)
+makeslider(autofarmTab, "Convert Honey At X Percent", "convertatx", {1, 100}, 1, "", function(s)
+    allvars.convertatx=s
+end, 100)
 maketoggle(autofarmTab, "Convert Balloon", "autoconvertballoon", function(s)
     allvars.converthiveballoon=s
 end)
@@ -4942,21 +5051,30 @@ maketoggle(webhookTab, "Enable Webhook", "discordwebhookenabled", function(s)
     if s then allvars.lastdiscordupdate = 0 end
 end)
 maketextbox(webhookTab, "Webhook URL", "discordwebhookurl", "https://discord.com/api/webhooks/", false, function(s)
+    if s == "" then return end
+    if not s:match("(https://discord%.com)") then
+        mainuimodule:Notify("Invalid URL.")
+    end
+    local req = game:HttpGet(s)
+    if not req or not HttpService:JSONDecode(req) or not HttpService:JSONDecode(req).token then
+        return mainuimodule:Notify("Webhook does not exist.")
+    end
     allvars.discordwebhookurl = s
     allvars.lastdiscordupdate = 0
+    mainuimodule:Notify("Webhook set.")
 end)
 makeslider(webhookTab, "Send Update Every X Minutes", "convertballoonatx", {1, 60}, 1, "", function(s)
     allvars.webhookinterval=s
 end, 5)
 
-RunService.RenderStepped:Connect(function()
+local autodigconnection = RunService.RenderStepped:Connect(function()
 	if not allvars.isrunning then return end
 	if allvars.autodig then
 		localcollect:Run()
 	end
 end)
 
-LocalPlayer.PlayerGui.ScreenGui.BeePopUp:GetPropertyChangedSignal("Visible"):Connect(function()
+local beepopconnection = LocalPlayer.PlayerGui.ScreenGui.BeePopUp:GetPropertyChangedSignal("Visible"):Connect(function()
     if not LocalPlayer.PlayerGui.ScreenGui.BeePopUp.Visible then return end
     if allvars.autofarm then
         firesignal(LocalPlayer.PlayerGui.ScreenGui.BeePopUp.CloseOverlay.MouseButton1Click)
@@ -4967,7 +5085,7 @@ if #getbeesdata().all == 0 then
     addbasicbee()
 end
 
-LocalPlayer.Idled:Connect(function()
+local antiafkconnection = LocalPlayer.Idled:Connect(function()
     virtualuser:CaptureController()
     virtualuser:ClickButton2(Vector2.new())
 end)
@@ -4992,14 +5110,16 @@ function serverhop()
     end
 end
 
-GuiService.ErrorMessageChanged:Connect(function(message)
+local disconnecthandlerconnection = GuiService.ErrorMessageChanged:Connect(function(message)
     local text = CoreGui:WaitForChild("RobloxPromptGui"):WaitForChild("promptOverlay"):WaitForChild("ErrorPrompt"):WaitForChild("MessageArea"):WaitForChild("ErrorFrame"):WaitForChild("ErrorMessage").Text
     warn(text)
     if text:lower():find("disconnect") or text:lower():find("kick") or text:lower():find("same account") or text:lower():find("shutdown") then
         task.spawn(function()
             allvars.disconnected = true
             queue_on_teleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/lunar-repo/beeswarm/refs/heads/main/test.lua'))()")
-            supersaferequest(allvars.discordwebhookurl, "POST", nil, HttpService:JSONEncode(builddisconnectbody(message)))
+            if allvars.discordwebhookenabled and allvars.discordwebhookurl:match("(https://discord%.com)") then
+                supersaferequest(allvars.discordwebhookurl, "POST", nil, HttpService:JSONEncode(builddisconnectbody(message)))
+            end
             while true do
                 serverhop()
                 task.wait()
@@ -5007,3 +5127,31 @@ GuiService.ErrorMessageChanged:Connect(function(message)
         end)
     end
 end)
+
+task.spawn(function()
+    while allvars.isloaded do
+        local Old = HttpService:JSONEncode(window.Flags)
+        task.wait(1)
+        if not allowsave then return end
+        local New = HttpService:JSONEncode(window.Flags)
+        if New ~= Old then
+            warn("AutoSaving ...")
+            writefile(SaveFileName, New)
+        end
+    end
+end)
+
+getgenv().LUNAR_UNLOAD = function()
+    print("okay")
+    allvars.isloaded = false
+    autofarmtoggle:Set(false)
+    tasks.deleteall()
+    _G.globaluilibrary:Destroy()
+    autodigconnection:Disconnect()
+    beepopconnection:Disconnect()
+    antiafkconnection:Disconnect()
+    disconnecthandlerconnection:Disconnect()
+    respawnhandlerconnection:Disconnect()
+end
+
+_G.LUNAR_LOADING = false
