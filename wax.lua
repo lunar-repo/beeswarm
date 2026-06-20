@@ -250,19 +250,13 @@ local function getAllBeequips()
 	return list
 end
 
-local WAX_NAMES = { "Soft", "Hard", "Caustic", "Debug" } -- Swirled excluded (no Upgrades)
-
--- ============================================================
--- GUI
--- ============================================================
-
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "WaxPredictorGui"
 screenGui.ResetOnSpawn = false
-screenGui.Parent = player:WaitForChild("PlayerGui")
+screenGui.Parent = gethui()
 
 local main = Instance.new("Frame")
-main.Name = "Main"
+main.Name = "wax"
 main.Size = UDim2.new(0, 420, 0, 480)
 main.Position = UDim2.new(0.5, -210, 0.5, -240)
 main.BackgroundColor3 = Color3.fromRGB(28, 28, 34)
