@@ -17,6 +17,8 @@ local StatModifiers = require(game.ReplicatedStorage.StatModifiers)
 local BeeStatMods -- optional, falls back if not present
 pcall(function() BeeStatMods = require(game.ReplicatedStorage.BeeStats.BeeStatMods) end)
 
+local WAX_NAMES = {"Soft", "Hard", "Swirled", "Caustic", "Debug"}
+
 local function _ugDefToTag(def)
 	local tag
 	if def.BeeStat then
