@@ -1,15 +1,21 @@
+
+
 --[[
-  lunar script beta
-  report bugs in discord: [placeholder]
+lunar script beta
+report bugs in discord: [placeholder]
 ]]
 
+-- sprouts:
+-- basic: 0.705882, 0.745098, 0.729412
+-- rare: 0.658824, 0.654902, 0.662745
+-- gummy: 0.94902, 0.505882, 1
+-- legendary: 0.0784314, 0.647059, 0.780392
+
+local realloadstart = tick()
 if _G.LUNAR_LOADING then return warn("[Lunar] Loading still in progress") end
 _G.LUNAR_LOADING = true
 pcall(function()
     getgenv().LUNAR_UNLOAD()
-end)
-pcall(function()
-    CoreGui.MPPNotifsUI:Destroy()
 end)
 
 local ContentProvider = game:GetService("ContentProvider")
@@ -35,11 +41,18 @@ local bufftilemodule = require(ReplicatedStorage.Gui.TileDisplay.BuffTile)
 local recipes = require(ReplicatedStorage.BlenderRecipes)
 local honeycombfile = require(ReplicatedStorage.HoneycombFileTools)
 local alertboxes = require(ReplicatedStorage.AlertBoxes)
+local beepopup = require(ReplicatedStorage.Gui.BeePopUp)
+local beeinspector = require(ReplicatedStorage.Gui.BeeInspector)
+local badgesmodule = require(ReplicatedStorage.Badges)
+local numbercommas = require(ReplicatedStorage.NumberCommas)
 
 repeat task.wait() until LocalPlayer:FindFirstChild("PlayerGui") and
-	LocalPlayer.PlayerGui:FindFirstChild("LoadingScreenGui") and
-	LocalPlayer.PlayerGui.LoadingScreenGui:FindFirstChild("LoadingMessage") and
-	LocalPlayer.PlayerGui.LoadingScreenGui.LoadingMessage.Visible == false
+    LocalPlayer.PlayerGui:FindFirstChild("LoadingScreenGui") and
+    LocalPlayer.PlayerGui.LoadingScreenGui:FindFirstChild("LoadingMessage") and
+    LocalPlayer.PlayerGui.LoadingScreenGui.LoadingMessage.Visible == false and
+    LocalPlayer.Character and 
+    LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and 
+    LocalPlayer.Character:FindFirstChild("Humanoid");
 
 local function supersaferequest(url,method,arg,body)
     if not method then method = "GET" end
@@ -75,6 +88,8 @@ local host = "https://github.com/lunar-repo/pic/raw/main/"
 if not isfile("r_antlers.png") then
     writefile("r_antlers.png", supersaferequest(host .. "Reindeer_Antlers.png").Body)
 end
+
+local Fluent = loadstring(supersaferequest("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua").Body)()
 
 -- entire gui module
 local SaveFileName = "lunar-default.json"
@@ -1244,17 +1259,17 @@ local mainuimodule = (function()
                 end
 
                 local F = Window.Flags[Flag]
-                function F:Set(New)
+                function F:Set(New, IsSave)
                     CurrentValue = New
                     Window.Flags[Flag].CurrentValue = CurrentValue
                     animation()
                     task.spawn(function()
-                        Callback(New)
+                        Callback(New, IsSave)
                     end)
                 end
 
                 if ((SaveTable[Flag] or {}).CurrentValue == true and not Properties.NoSave) or CurrentValue then
-                    F:Set(true)
+                    F:Set(true, true)
                 end
                 
                 Click.MouseButton1Click:Connect(function()
@@ -1454,6 +1469,7 @@ local mainuimodule = (function()
 
                 if SaveTable[Flag] then
                     CurrentValue = SaveTable[Flag].CurrentValue
+                    Window.Flags[Flag] = {CurrentValue = CurrentValue}
                     task.spawn(function()
                         Callback(CurrentValue)
                     end)
@@ -1635,7 +1651,7 @@ local mainuimodule = (function()
                 if (SaveTable[Flag] or {}).CurrentOption and not DeepEqual(SaveTable[Flag].CurrentOption, Options) then
                     CurrentOption = ValuesToTable(SaveTable[Flag].CurrentOption)
                     task.spawn(function()
-                        Callback(CurrentOption)
+                        Callback(CurrentOption,true)
                     end)
                 end
                 local Values = {}
@@ -2113,7 +2129,7 @@ local mainuimodule = (function()
                     Window.Flags[Flag] = SaveTable[Flag]
                     TextBox.Text = SaveTable[Flag].CurrentValue
                     task.spawn(function()
-                        Callback(TextBox.Text)
+                        Callback(TextBox.Text, true)
                     end)
                 end
                 
@@ -2674,53 +2690,18 @@ local mainuimodule = (function()
         end)
     end
 
-    local ScreenGui = Instance.new("ScreenGui")
-    local Notification = Instance.new("Frame")
-    local UICorner = Instance.new("UICorner")
-    local TextLabel = Instance.new("TextLabel")
-    ScreenGui.Parent = CoreGui
-    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    ScreenGui.Name = "MPPNotifsUI"
-    Notification.Name = "Notification"
-    Notification.Parent = ScreenGui
-    Notification.AnchorPoint = Vector2.new(1, 1)
-    Notification.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    Notification.BackgroundTransparency = 0.300
-    Notification.BorderColor3 = Color3.fromRGB(0, 0, 0)
-    Notification.BorderSizePixel = 0
-    Notification.Position = UDim2.new(1, -30, 1, -30)
-    Notification.Size = UDim2.new(0, 200, 0, 50)
-    Notification.Visible = false
-    UICorner.Parent = Notification
-    UICorner.CornerRadius = UDim.new(0, 12)
-    TextLabel.Parent = Notification
-    TextLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-    TextLabel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    TextLabel.BackgroundTransparency = 1.000
-    TextLabel.BorderColor3 = Color3.fromRGB(0, 0, 0)
-    TextLabel.BorderSizePixel = 0
-    TextLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
-    TextLabel.Size = UDim2.new(0, 200, 0, 50)
-    TextLabel.Font = Enum.Font.Arial
-    TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TextLabel.TextSize = 16.000
-    TextLabel.TextWrapped = true
-
+    local NotifQueue = {}
     function Library:Notify(text)
-        Notification.Visible = true 
-        if notifTask then
-            notifTask = task.cancel(notifTask)
-        end
-        notifTask = task.delay(7, function()
-            Notification.Visible = false
+        if NotifQueue[text] then return end
+        NotifQueue[text] = true
+        task.delay(7, function()
+            NotifQueue[text] = nil
         end)
-        Notification.TextLabel.Text = text
-        task.spawn(function()
-            while Notification.TextLabel.Text == text and Notification.Visible do
-                Notification.Size = UDim2.new(0, math.clamp(Notification.TextLabel.TextBounds.X + 80, 0, 300), 0, Notification.TextLabel.TextBounds.Y + 29)
-                wait(0.1)
-            end
-        end)
+        Fluent:Notify({
+            Title = "Lunar",
+            Content = text,
+            Duration = 7
+        })
     end
 
     return Library
@@ -2981,6 +2962,10 @@ function getclientstatcache(...)
     return clientstatcache:Get({...})
 end
 
+function updatestatcache()
+    clientstatcache:Update()
+end
+
 local tasks = {
     tasks = {},
     events = {}
@@ -3022,7 +3007,8 @@ function tasks.deleteall()
 end
 
 local allvars = {
-    timeatload = os.clock(),
+    remotes=false,
+    timeatload = _G.lunartimeatload or os.clock(),
     discordwebhookurl = "",
     discordwebhookenabled = false,
     webhookinterval = 5,
@@ -3048,16 +3034,21 @@ local allvars = {
     redosprinklers = true,
     sprinklefield = nil,
     allowedcrafts = {},
+    autoprogcapabs = {"Purchase gear", "Add bees and use royal jelly", "Automaticaly select fields", "Redeem codes", "Use the blender", "Collect secret rares"},
     isloaded = true,
     movespeed = 70,
     speedhackenabled = false,
     dynamicmovespeedmultiplier = 2,
     dynamicspeedhackenabled = false,
+    dynamicmovespeedmaximum = 100,
     killvic = false,
     vicnotifier = false,
     maxviclevel = 12,
     minviclevel = 1,
+    ignorevicbee = {},
+    avoidmobs = true,
     vicaveragebeelevel = true,
+    autoprogbadgeorder = {},
     autoprogjson = [[
         [
             {
@@ -3086,6 +3077,17 @@ local allvars = {
                 "value": ["Sunflower Field", "Bamboo Field", "Pineapple Patch", "Pine Tree Forest"]
             },
             {
+                "event": "badges",
+                "value": [
+                    "Pine Tree Forest",
+                    "Bamboo Field",
+                    "Pumpkin Patch",
+                    "Cactus Field",
+                    "Rose Field",
+                    "Blue Flower Field"
+                ]
+            },
+            {
                 "event": "gear",
                 "value": [
                     "Jar",
@@ -3111,9 +3113,6 @@ local allvars = {
                     "Bubble Wand",
                     "Basic Sprinkler",
                     "PlasticPlanter",
-                    "Beekeeper's Mask",
-                    "Beekeeper's Boots",
-                    "Mondo Belt Bag",
                     "Blue Port-O-Hive",
                     "Silver Soakers",
                     "Elite Blue Guard",
@@ -3149,11 +3148,16 @@ local allvars = {
     forcetasks = {
         fireflies = false,
         killvic = false,
+        autoprogbadges = {},
     },
     farmfireflies = false,
     fireflyfield = nil,
     nextautoprogitem = nil,
+    farmmeteorites = false,
+    lastmeteordetect = math.huge,
+    lastfarmbadge = nil,
 }
+_G.lunartimeatload = allvars.timeatload
 
 local slotkeytotype = {
     ["Left Shoulder"]  = "leftshoulder",
@@ -3166,42 +3170,42 @@ local slotkeytotype = {
 }
 
 local priorites = {
-	["Red Boost"] = {Enabled = false, Asset = "rbxassetid://1442863423"},
-	["Blue Boost"] = {Enabled = false, Asset = "rbxassetid://1442863423"},
-	["White Boost"] = {Enabled = false, Asset = "http://www.roblox.com/asset/?id=3877732821"},
-	["Baby Love"] = {Enabled = false, Asset = "rbxassetid://1472256444"},
-	["Crosshairs"] = {Enabled = false, Asset = "rbxassetid://8173559749"},
-	["Scratch"] = {Enabled = false, Asset = "rbxassetid://1104415222", Default = 5},
-	["Focus"] = {Enabled = false, Asset = "rbxassetid://1629649299"},
-	["Inflate"] = {Enabled = false, Asset = "rbxassetid://8083436978"},
-	["Surprise Party"] = {Enabled = false, Asset = "rbxassetid://8083943936"},
-	["Summon Frog"] = {Enabled = false, Asset = "http://www.roblox.com/asset/?id=4528414666"},
-	["Cloud"] = {Enabled = false, Asset = "rbxassetid://3582501342"},
-	["Tabby Love"] = {Enabled = false, Asset = "rbxassetid://1753904608"},
-	["Haste"] = {Enabled = false, Asset = "http://www.roblox.com/asset/?id=65867881"},
-	["Melody"] = {Enabled = false, Asset = "http://www.roblox.com/asset/?id=253828517"},
-	["Festive Blessing"] = {Enabled = false, Asset = "rbxassetid://2652424740", Default = 3},
-	["Beesmas Cheer"] = {Enabled = false, Asset = "rbxassetid://2652364563", Default = 3},
-	["Blue Bomb"] = {Enabled = false, Asset = "rbxassetid://1442725244"},
-	["Red Bomb"] = {Enabled = false, Asset = "rbxassetid://1442764904"},
-	["White Bomb"] = {Enabled = false, Asset = "rbxassetid://1442764904"},
-	["Inspire"] = {Enabled = false, Asset = "rbxassetid://2000457501", Default = 4},
-	["Gummy Blob"] = {Enabled = false, Asset = "http://www.roblox.com/asset/?id=177997841"},
-	["Gummy Shower"] = {Enabled = false, Asset = "rbxassetid://1839454544"},
-	["Snowflake"] = {Enabled = false, Asset = "rbxassetid://6087969886"},
-	["Gumdrops"] = {Enabled = false, Asset = "rbxassetid://1838129169"},
-	["Sunflower Seed"] = {Enabled = false, Asset = "rbxassetid://1952682401"},
-	["Strawberry"] = {Enabled = false, Asset = "rbxassetid://1952740625"},
-	["Blueberry"] = {Enabled = false, Asset = "rbxassetid://2028453802"},
-	["Pineapple"] = {Enabled = false, Asset = "rbxassetid://1952796032"},
+    ["Red Boost"] = {Enabled = false, Asset = "rbxassetid://1442863423"},
+    ["Blue Boost"] = {Enabled = false, Asset = "rbxassetid://1442863423"},
+    ["White Boost"] = {Enabled = false, Asset = "http://www.roblox.com/asset/?id=3877732821"},
+    ["Baby Love"] = {Enabled = false, Asset = "rbxassetid://1472256444"},
+    ["Crosshairs"] = {Enabled = false, Asset = "rbxassetid://8173559749"},
+    ["Scratch"] = {Enabled = false, Asset = "rbxassetid://1104415222", Default = 5},
+    ["Focus"] = {Enabled = false, Asset = "rbxassetid://1629649299"},
+    ["Inflate"] = {Enabled = false, Asset = "rbxassetid://8083436978"},
+    ["Surprise Party"] = {Enabled = false, Asset = "rbxassetid://8083943936"},
+    ["Summon Frog"] = {Enabled = false, Asset = "http://www.roblox.com/asset/?id=4528414666"},
+    ["Cloud"] = {Enabled = false, Asset = "rbxassetid://3582501342"},
+    ["Tabby Love"] = {Enabled = false, Asset = "rbxassetid://1753904608"},
+    ["Haste"] = {Enabled = false, Asset = "http://www.roblox.com/asset/?id=65867881"},
+    ["Melody"] = {Enabled = false, Asset = "http://www.roblox.com/asset/?id=253828517"},
+    ["Festive Blessing"] = {Enabled = false, Asset = "rbxassetid://2652424740", Default = 3},
+    ["Beesmas Cheer"] = {Enabled = false, Asset = "rbxassetid://2652364563", Default = 3},
+    ["Blue Bomb"] = {Enabled = false, Asset = "rbxassetid://1442725244"},
+    ["Red Bomb"] = {Enabled = false, Asset = "rbxassetid://1442764904"},
+    ["White Bomb"] = {Enabled = false, Asset = "rbxassetid://1442764904"},
+    ["Inspire"] = {Enabled = false, Asset = "rbxassetid://2000457501", Default = 4},
+    ["Gummy Blob"] = {Enabled = false, Asset = "http://www.roblox.com/asset/?id=177997841"},
+    ["Gummy Shower"] = {Enabled = false, Asset = "rbxassetid://1839454544"},
+    ["Snowflake"] = {Enabled = false, Asset = "rbxassetid://6087969886"},
+    ["Gumdrops"] = {Enabled = false, Asset = "rbxassetid://1838129169"},
+    ["Sunflower Seed"] = {Enabled = false, Asset = "rbxassetid://1952682401"},
+    ["Strawberry"] = {Enabled = false, Asset = "rbxassetid://1952740625"},
+    ["Blueberry"] = {Enabled = false, Asset = "rbxassetid://2028453802"},
+    ["Pineapple"] = {Enabled = false, Asset = "rbxassetid://1952796032"},
 }
 local rawpriortable = {}
 local a = 0
 local function addtopriorities(names)
-	for j = 1, #names do
-		a+=1
-		rawpriortable[a]=names[j]
-	end
+    for j = 1, #names do
+        a+=1
+        rawpriortable[a]=names[j]
+    end
 end
 -- Boosts
 addtopriorities({"Red Boost", "Blue Boost", "White Boost", "Blue Bomb", "Red Bomb", "White Bomb"})
@@ -3209,8 +3213,8 @@ addtopriorities({"Red Boost", "Blue Boost", "White Boost", "Blue Bomb", "Red Bom
 addtopriorities({"Inspire", "Haste", "Melody", "Focus"})
 -- Other
 addtopriorities({"Gummy Blob", "Gummy Shower", "Tabby Love", "Cloud",
-	"Summon Frog", "Surprise Party", "Scratch", "Crosshairs", "Baby Love", 
-	"Beesmas Cheer", "Festive Blessing", "Inflate"
+    "Summon Frog", "Surprise Party", "Scratch", "Crosshairs", "Baby Love", 
+    "Beesmas Cheer", "Festive Blessing", "Inflate"
 })
 -- Loot
 addtopriorities({"Strawberry", "Blueberry", "Pineapple", "Sunflower Seed", "Snowflake"})
@@ -3343,38 +3347,38 @@ if #workspace.NewFlowerZones:GetChildren() == 0 then
 end
 
 function randomstring(l)
-	local str = ""
-	local chars = ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"):split("")
-	for i = 1, l or 16 do
-		str = str .. chars[math.random(1, #chars)]
-	end
-	return str
+    local str = ""
+    local chars = ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"):split("")
+    for i = 1, l or 16 do
+        str = str .. chars[math.random(1, #chars)]
+    end
+    return str
 end
 
 if not workspace:FindFirstChild("CaveFolder") then
-	local CaveFolder = Instance.new("Folder", workspace)
-	CaveFolder.Name = "CaveFolder"
+    local CaveFolder = Instance.new("Folder", workspace)
+    CaveFolder.Name = "CaveFolder"
 
-	local FillPart = Instance.new("Part", CaveFolder)
-	FillPart.Name = randomstring()
-	FillPart.Position = Vector3.new(-29.765, 70.252, -144)
-	FillPart.Size = Vector3.new(149.529, 10.607, 89.198)
-	FillPart.Transparency = 1
+    local FillPart = Instance.new("Part", CaveFolder)
+    FillPart.Name = randomstring()
+    FillPart.Position = Vector3.new(-29.765, 70.252, -144)
+    FillPart.Size = Vector3.new(149.529, 10.607, 89.198)
+    FillPart.Transparency = 1
 end
 
 function checkcave(startPos, endPos)
-	local direction = (endPos - startPos).Unit
-	local ray = Ray.new(startPos, direction * (endPos - startPos).magnitude)
-	return workspace:FindPartOnRayWithWhitelist(ray, {workspace.CaveFolder}) ~= nil
+    local direction = (endPos - startPos).Unit
+    local ray = Ray.new(startPos, direction * (endPos - startPos).magnitude)
+    return workspace:FindPartOnRayWithWhitelist(ray, {workspace.CaveFolder}) ~= nil
 end
 
 local Pit = workspace.Decorations["30BeeZone"].Pit
 local HiveHubPortal = (function()
-	for i, v in pairs(workspace.Map.Ground.Campsite:GetChildren()) do
-		if v.Name == "TradeHubPortalPart" and v:FindFirstChild("TouchInterest") then
-			return v
-		end
-	end
+    for i, v in pairs(workspace.Map.Ground.Campsite:GetChildren()) do
+        if v.Name == "TradeHubPortalPart" and v:FindFirstChild("TouchInterest") then
+            return v
+        end
+    end
 end)()
 local RetroPortal = workspace.RetroEvent.RetroChallengePortal.Trigger
 
@@ -3395,109 +3399,106 @@ function safewalk(v3, precise)
 end
 
 function isfield(pos)
-	local hit = workspace:FindPartOnRayWithWhitelist(Ray.new(pos + Vector3.new(0, 100, 0), Vector3.new(0, -999, 0)), {newzones})
-	return hit and hit.Parent.Name == newzones.Name and hit
+    local hit = workspace:FindPartOnRayWithWhitelist(Ray.new(pos + Vector3.new(0, 100, 0), Vector3.new(0, -999, 0)), {newzones})
+    return hit and hit.Parent.Name == newzones.Name and hit
 end
 
 function stoptween()
-	local root = allvars.api.getRoot()
-	local hum = allvars.api.getHumanoid()
-	if not root then return end
-	if not hum then return end
+    local root = allvars.api.getRoot()
+    local hum = allvars.api.getHumanoid()
+    if not root then return end
+    if not hum then return end
 
     if _G.nocliptween then
         pcall(function() _G.nocliptween:Disconnect() end)
     end
 
-	if root:FindFirstChild("AlignPosition") then
-		root.AlignPosition:Destroy()
-	end
-	if root:FindFirstChild("AlignOrientation") then
-		root.AlignOrientation:Destroy()
-	end
+    if root:FindFirstChild("AlignPosition") then
+        root.AlignPosition:Destroy()
+    end
+    if root:FindFirstChild("AlignOrientation") then
+        root.AlignOrientation:Destroy()
+    end
 end
 
 function disableall()
-	stoptween()
-	if gettingtoken then
-		gettingtoken:Disconnect()
-	end
+    stoptween()
+    --[[if gettingtoken then
+        gettingtoken:Disconnect()
+    end]]
 
     local hum = allvars.api.getHumanoid()
     local root = allvars.api.getRoot()
 
-	if hum and root then
-		hum:MoveTo(root.Position)
+    if hum and root then
+        hum:MoveTo(root.Position)
         hum:ChangeState(Enum.HumanoidStateType.Landed)
         root.Velocity = Vector3.zero
-	end
+    end
 
     Pit.CanTouch = true
-	HiveHubPortal.CanTouch = true
-	RetroPortal.CanTouch = true
+    HiveHubPortal.CanTouch = true
+    RetroPortal.CanTouch = true
 
-	disablenoclip()
+    disablenoclip()
 end
 
 local nocliporiginal = {}
 function enablenoclip()
-	local char = LocalPlayer.Character
-	if not char then return end
-	for i, v in pairs(char:GetDescendants()) do
-		if v:IsA("BasePart") and v.CanCollide then
-			nocliporiginal[v] = true
-			v.CanCollide = false
-		end
-	end
+    local char = LocalPlayer.Character
+    if not char then return end
+    for i, v in pairs(char:GetDescendants()) do
+        if v:IsA("BasePart") and v.CanCollide then
+            nocliporiginal[v] = true
+            v.CanCollide = false
+        end
+    end
 end
 
 function disablenoclip()
-	local char = LocalPlayer.Character
-	if not char then return end
-	for i, v in pairs(char:GetDescendants()) do
-		if v:IsA("BasePart") and nocliporiginal[v] then
-			v.CanCollide = true
-		end
-	end
-	table.clear(nocliporiginal)
+    local char = LocalPlayer.Character
+    if not char then return end
+    for i, v in pairs(char:GetDescendants()) do
+        if v:IsA("BasePart") and nocliporiginal[v] then
+            v.CanCollide = true
+        end
+    end
+    table.clear(nocliporiginal)
 end
 
 function tweento(vect, speed, caveavoid, precise)
-	Pit.CanTouch = false
-	HiveHubPortal.CanTouch = false
-	RetroPortal.CanTouch = false
-	if _G.nocliptween then
-		_G.nocliptween:Disconnect()
-	end
-	
-	local start = tick()
-	local root = allvars.api.getRoot()
-	local hum = allvars.api.getHumanoid()
-	if not root then return end
-	if not hum then return end
+    Pit.CanTouch = false
+    HiveHubPortal.CanTouch = false
+    RetroPortal.CanTouch = false
+    if _G.nocliptween then
+        _G.nocliptween:Disconnect()
+    end
+    
+    local start = tick()
+    local root = allvars.api.getRoot()
+    local hum = allvars.api.getHumanoid()
+    if not root then return end
+    if not hum then return end
 
-	if root:FindFirstChild("AlignPosition") then
-		root.AlignPosition:Destroy()
-	end
-	if root:FindFirstChild("AlignOrientation") then
-		root.AlignOrientation:Destroy()
-	end
+    if root:FindFirstChild("AlignPosition") then
+        root.AlignPosition:Destroy()
+    end
+    if root:FindFirstChild("AlignOrientation") then
+        root.AlignOrientation:Destroy()
+    end
+    
+    local usespeedarg = speed ~= nil
 
-	if checkcave(root.Position, vect) and not caveavoid then
-		tweento(Vector3.new(21, 125, -50), speed, true)
-	end
+    if checkcave(root.Position, vect) and not caveavoid then
+        tweento(Vector3.new(21, 125, -50), speed, true)
+    end
 
-	if not speed then
-		speed = allvars.tweenspeed
-	end
-
-	local tweeningposition = Instance.new("AlignPosition")
-	tweeningposition.Mode = Enum.PositionAlignmentMode.OneAttachment
-	tweeningposition.Attachment0 = root.RootAttachment
-	tweeningposition.MaxForce = math.huge
-	tweeningposition.MaxVelocity = speed * 10
-	tweeningposition.Position = vect
-	tweeningposition.Parent = root
+    local tweeningposition = Instance.new("AlignPosition")
+    tweeningposition.Mode = Enum.PositionAlignmentMode.OneAttachment
+    tweeningposition.Attachment0 = root.RootAttachment
+    tweeningposition.MaxForce = math.huge
+    tweeningposition.Position = vect
+    tweeningposition.Parent = root
 
     local tweeningorientation = Instance.new("AlignOrientation")
     tweeningorientation.Attachment0 = root.RootAttachment
@@ -3506,22 +3507,24 @@ function tweento(vect, speed, caveavoid, precise)
     tweeningorientation.CFrame = root.CFrame
     tweeningorientation.Parent = root
 
-	_G.nocliptween = RunService.RenderStepped:Connect(function()
-		enablenoclip()
-	end)
+    _G.nocliptween = RunService.RenderStepped:Connect(function()
+        enablenoclip()
+    end)
 
-	hum:ChangeState(Enum.HumanoidStateType.Landed)
-	RunService.Heartbeat:Wait()
-	hum:ChangeState(Enum.HumanoidStateType.Physics)
+    hum:ChangeState(Enum.HumanoidStateType.Landed)
+    RunService.Heartbeat:Wait()
+    hum:ChangeState(Enum.HumanoidStateType.Physics)
 
-	repeat
-		if allvars.api.magnitude(root.Position, vect, precise and 0.1 or 1.5) then break end
-		if not root:FindFirstChild("AlignPosition") then break end
-		if not root:FindFirstChild("AlignOrientation") then break end
-		task.wait()
-	until (tick() - start) > allvars.tweentimeout
+    repeat
+        speed = usespeedarg and speed or allvars.tweenspeed
+        tweeningposition.MaxVelocity = speed * 10
+        if allvars.api.magnitude(root.Position, vect, precise and 0.1 or 1.5) then break end
+        if not root:FindFirstChild("AlignPosition") then break end
+        if not root:FindFirstChild("AlignOrientation") then break end
+        task.wait()
+    until (tick() - start) > allvars.tweentimeout
 
-	disableall()
+    disableall()
 end
 
 local ActivateButton = LocalPlayer.PlayerGui.ScreenGui.ActivateButton
@@ -3567,26 +3570,33 @@ function clickframe(frame)
 end
 
 function claimhive()
-	while not LocalPlayer:FindFirstChild("Honeycomb") do
-		print("Claiming hive")
-		for i = 6, 1, -1 do
-			if LocalPlayer:FindFirstChild("Honeycomb") then break end
-			local comb = workspace.Honeycombs["Hive" .. i]
-			if comb:FindFirstChild("Owner") and not comb.Owner.Value then
-				tweento(comb.patharrow.Base.Position + Vector3.new(0, 2.5, 0))
-				if not comb.Owner.Value then
-					pressactivatebutton()
-				end
+    while not LocalPlayer:FindFirstChild("Honeycomb") do
+        print("Claiming hive")
+        for i = 6, 1, -1 do
+            if LocalPlayer:FindFirstChild("Honeycomb") then break end
+            local comb = workspace.Honeycombs["Hive" .. i]
+            if comb:FindFirstChild("Owner") and not comb.Owner.Value then
+                tweento(comb.patharrow.Base.Position + Vector3.new(0, 2.5, 0))
+                if not comb.Owner.Value then
+                    if allvars.remotes then
+                        events.ClientCall("ClaimHive", i)
+                        updatestatcache()
+                    else
+                        pressactivatebutton()
+                    end
+                end
                 task.wait(1.5)
-				break
-			end
-		end
-		task.wait()
-	end
+                break
+            end
+        end
+        task.wait()
+    end
 end
 
+local loadcomp = tick()
 claimhive()
 allvars.hive = LocalPlayer:FindFirstChild("Honeycomb").Value
+realloadstart = realloadstart + (tick() - loadcomp)
 
 function deepcopy(t)
     if type(t) ~= "table" then return t end
@@ -3598,6 +3608,8 @@ function deepcopy(t)
 end
 
 function blendercraft(name, amount)
+    local capabilities = allvars.autoprogcapabs
+    if allvars.autoprogress and not table.find(capabilities, "Use the blender") then return end
     tasks.add("blender", function()
         local ticketsneeded = amount
         local displayname = eggtypesmodule.Get(name).DisplayName
@@ -3609,7 +3621,23 @@ function blendercraft(name, amount)
         if not reallycanafford(recipe) or not hasaccessshopfuncs.badgeguild() then return end
         ticketsneeded = math.ceil(ticketsneeded / (recipe.AutoCompletePerTicket))
         print("tickets:",ticketsneeded, "name:", displayname)
+        if (getclientstatcache("Eggs", "Ticket") or 0) < ticketsneeded then return end
         tweento(workspace.Toys.Blender.Platform.Circle.Position+Vector3.new(0,5,0))
+        if allvars.remotes then
+            local fails = 0
+            while events.ClientCall("BlenderCommand", "PlaceOrder", {
+                Recipe = name,
+                Count = amount
+            }) == false and fails <= 3 do
+                fails = fails + 1
+                print("blender failure", name)
+                task.wait(1)
+            end
+            events.ClientCall("BlenderCommand", "SpeedUpOrder")
+            task.wait(1)
+            updatestatcache()
+            return
+        end
         repeat task.wait() until ActivateButton.TextBox.Text == "Open the Blender Menu"
         hidealluis()
         local blenderui = LocalPlayer.PlayerGui.ScreenGui.Blender
@@ -3625,7 +3653,6 @@ function blendercraft(name, amount)
         end
         firesignal(blenderui.Box.SelectBox.SelectButton.MouseButton1Click)
         while tonumber(blenderui.Box.QuantitySelect.QuantityLabel.Text) ~= amount do
-            print(amount)
             firesignal(blenderui.Box.QuantitySelect.PlusButton.MouseButton1Click)
             RunService.RenderStepped:Wait()
         end
@@ -3656,7 +3683,54 @@ function hasearnbadges(amount, tier)
     return unlocked >= amount
 end
 
-function reallycanafford(data, noblend)
+function sortbestbadges(amount, tier, lowestrequired, claimonly)
+    local tofarm = {}
+    local tiermul = {1, 10, 100, 1000, 20000}
+    for i, v in pairs(badgesmodule:GetSets()) do
+        if allvars.autoprogress and badgesmodule.CheckIfSetIsReadyToCollect(v.Name, getclientstatcache()) then
+            smartclaimbadge(v.Name, getclientstatcache("Badges")[v.Name])
+            continue
+        end
+        if claimonly then continue end
+        if #tofarm >= amount then break end
+        if ((getclientstatcache("Badges") or {})[v.Name] or 0) >= tier then continue end
+        local task = v.Task
+        if task.Type == "Collect Pollen" and #getbeesdata().all >= (allvars.fieldbeereqs[task.Zone] or math.huge) then
+            local reqpollen = task.Amounts and task.Amounts[tier] or (task.Amount * tiermul[tier])
+            local done = getclientstatcache("Totals", "Pollen", "Zones", task.Zone) or 0
+            table.insert(tofarm, {zone=task.Zone,amount=reqpollen-done,req=reqpollen,done=done,name=v.Name})
+        end
+    end
+    if allvars.autoprogress then
+        local orderindex = {}
+        for i, zone in ipairs(allvars.autoprogbadgeorder) do
+            orderindex[zone] = i
+        end
+        table.sort(tofarm, function(a, b)
+            local ai = orderindex[a.zone] or math.huge
+            local bi = orderindex[b.zone] or math.huge
+            if ai ~= bi then
+                return ai < bi
+            end
+            if lowestrequired then
+                return a.amount < b.amount
+            else
+                return a.amount > b.amount
+            end
+        end)
+    else
+        table.sort(tofarm, function(a, b)
+            if lowestrequired then
+                return a.amount < b.amount
+            else
+                return a.amount > b.amount
+            end
+        end)
+    end
+    return tofarm
+end
+
+function reallycanafford(data, autoprog)
     local affordhoney = true
     local requirementsmet = true
     local hasmaterials = true
@@ -3667,7 +3741,7 @@ function reallycanafford(data, noblend)
             end
         else
             if not getclientstatcache(v.Category, v.Type) or getclientstatcache(v.Category, v.Type) < v.Amount then
-                if not noblend then
+                if not autoprog then
                     local function craft()
                         blendercraft(v.Type, v.Amount - (getclientstatcache(v.Category, v.Type) or 0))
                     end
@@ -3701,6 +3775,7 @@ function reallycanafford(data, noblend)
             end
         elseif v.Type == "Earn Badges" then
             if not hasearnbadges(v.Amount, v.Tier) then
+                allvars.forcetasks.autoprogbadges = sortbestbadges(v.Amount, v.Tier, true)
                 requirementsmet = false
             end
         end
@@ -3712,34 +3787,33 @@ end
 function getbeesdata()
     local gifted = {}
     local all = {}
-    local cells = {}
+    local emptycells = 0
     for i, v in pairs(allvars.hive.Cells:GetChildren()) do
         local bee = {}
-        if v:FindFirstChild("Faceplate") then
+        if v:FindFirstChild("Faceplate") and v.CellType.Value ~= "Empty" then
             bee.name = v.CellType.Value
             bee.Gifted = v:FindFirstChild("GiftedCell") ~= nil
             bee.X = v.CellX.Value
             bee.Y = v.CellY.Value
             if bee.gifted then table.insert(gifted, bee) end
             table.insert(all, bee)
-        end
-        if not v.CellLocked.Value then
-            table.insert(cells, {Cell = v})
+        elseif v.CellType.Value == "Empty" and not v.CellLocked.Value then
+            emptycells = emptycells + 1
         end
     end
     return {
         gifted = gifted,
         all = all,
-        cells = cells
+        emptycells = emptycells
     }
 end
 
 function truncatetime(sec)
-	local second = tostring(math.round(sec)%60)
-	local minute = tostring(math.floor(sec / 60 - math.floor(sec / 3600) * 60))
-	local hour = tostring(math.floor(sec / 3600))
+    local second = tostring(math.round(sec)%60)
+    local minute = tostring(math.floor(sec / 60 - math.floor(sec / 3600) * 60))
+    local hour = tostring(math.floor(sec / 3600))
 
-	return (#hour == 1 and "0"..hour or hour)..":"..(#minute == 1 and "0"..minute or minute)..":"..(#second == 1 and "0"..second or second)
+    return (#hour == 1 and "0"..hour or hour)..":"..(#minute == 1 and "0"..minute or minute)..":"..(#second == 1 and "0"..second or second)
 end
 
 function truncate(num)
@@ -3808,9 +3882,20 @@ function openbsstab(name)
     return openeggs()
 end
 
-function smartfeedbee(cell, treat, tosearch)
+function smartfeedbee(cell, treat, tosearch, amount)
     tasks.add("feeding cell", function()
         local success, result = pcall(function()
+            if allvars.remotes then
+                local NewTreatAmount, Modified, NewHoneycomb, NewDiscoveredBees, EggUses = events.ClientCall("ConstructHiveCellFromEgg", cell.CellX.Value, cell.CellY.Value, treat:gsub(" ", ""):gsub("Egg", ""), amount or 1, false)
+                if Modified then
+                    clientstatcache:Set({ "Eggs", treat }, NewTreatAmount)
+                    clientstatcache:Set("DiscoveredBees", NewDiscoveredBees)
+                    clientstatcache:Set("Honeycomb", NewHoneycomb)
+                    clientstatcache:Set({ "Totals", "EggUses" }, EggUses)
+                    require(game.ReplicatedStorage.GateManager).UpdateGateColors()
+                end
+                return
+            end
             hidealluis()
             local content
             content = openbsstab("Eggs")
@@ -3841,7 +3926,6 @@ function smartfeedbee(cell, treat, tosearch)
                 local row = finditeminventorybyname(treat)
                 if row and isVisible(row) then
                     local startTime = tick()
-                    
                     repeat
                         for i = 1, 5 do
                             VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.O, false, game, 0)
@@ -3876,17 +3960,17 @@ function smartfeedbee(cell, treat, tosearch)
             showalluis()
         end)
         if not success then
-        warn("smartfeedbee:", result)
+            warn("smartfeedbee:", result)
         end
         showalluis()
     end)
 end
 
 function getbeelevelforcombat()
-    return math.round(honeycombfile.GetAverageBeeLevel(getclientstatcache("Honeycomb"))) + 1
+    return math.round(honeycombfile.GetAverageBeeLevel(getclientstatcache("Honeycomb")))
 end
 
-function buygear(gearName, shop)
+function buygear(gearName, shop, amount)
     task.spawn(function()
         if allvars.discordwebhookenabled and allvars.discordwebhookurl:match("(https://discord%.com)") then
             supersaferequest(allvars.discordwebhookurl, "POST", nil, HttpService:JSONEncode(buildautoprogbuybody(gearName, allvars.autoprogress)))
@@ -3921,6 +4005,31 @@ function buygear(gearName, shop)
         end
         if not allvars.api.magnitude(allvars.api.getRoot().Position, pos, 8) then
             tweento(pos)
+        end
+        if allvars.remotes then
+            local gearinstance = workspace.Shops:FindFirstChild(gearName, true) or workspace.Shops:FindFirstChild(gearName:gsub(" ", ""), true)
+            if not gearinstance then error("gearinstance is nil so no buy item goodbye") end
+            local fails = 0
+            local function purchase()
+                local res = events.ClientCall("ItemPackageEvent", "Purchase", {
+                    Type = gearinstance.ItemType.Value,
+                    Category = gearinstance.ItemCategory.Value,
+                    Amount = gearinstance:FindFirstChild("ItemAmount") and (amount or 1) or nil
+                })
+                updatestatcache()
+                return res
+            end
+            while fails <= 3 do
+                local res = purchase()
+                if res == true then
+                    return
+                else
+                    fails = fails + 1
+                    warn("purchase failure", gearName, res)
+                    task.wait(1)
+                end
+            end
+            return
         end
         repeat task.wait() until ActivateButton.TextBox.Text == "Open Shop" or ActivateButton.TextBox.Text == "Leave Shop"
         while ActivateButton.TextBox.Text == "Open Shop" do
@@ -4002,8 +4111,11 @@ function addbasicbee()
                     smartfeedbee(oldcell, "Basic Egg")
                     local s, bee = pcall(function()
                         local start = tick()
-                        repeat task.wait() until oldcell.CellType.Value:sub(-3) == "Bee" or tick() - start > 3
-                        if tick() - start > 3 then error("timeout") end
+                        repeat
+                            oldcell = allvars.hive.Cells:WaitForChild("C" .. x .. "," .. y)
+                            task.wait()
+                        until oldcell.CellType.Value:sub(-3) == "Bee" or tick() - start > 3
+                        if tick() - start > 3 then error("timeout " .. oldcell.CellType.Value) end
                         return oldcell.CellType.Value:sub(1, -4)
                     end)
                     if s then print("Hatched \"" .. tostring(bee) .. "\" bee") else warn(bee) end
@@ -4053,12 +4165,12 @@ function isNight()
 end
 
 function isfarmingpopstar()
-	local popstartime = getBuffTime("Pop Star Aura")
-	if popstartime > 0 and allvars.farmbloat then return true end
-	local bubblebloat = getBuffTime("Bubble Bloat")
-	if popstartime > 0 and bubblebloat > 0 and allvars.farmbloatwhenlow and bubblebloat < 7500 then return true end
+    local popstartime = getBuffTime("Pop Star Aura")
+    if popstartime > 0 and allvars.farmbloat then return true end
+    local bubblebloat = getBuffTime("Bubble Bloat")
+    if popstartime > 0 and bubblebloat > 0 and allvars.farmbloatwhenlow and bubblebloat < 7500 then return true end
 
-	return false
+    return false
 end
 
 function getBagPercentage()
@@ -4069,36 +4181,36 @@ function getBagPercentage()
 end
 
 function getpolleninballoon()
-	for i, v in pairs(workspace.Balloons.HiveBalloons:GetChildren()) do
-		if v.Name == "HiveBalloonInstance" and v:FindFirstChild("BalloonRoot") and v:FindFirstChild("BalloonBody") then
-			if allvars.api.magnitude(v.BalloonRoot.Position * Vector3.new(1, 0, 0), LocalPlayer.SpawnPos.Value.Position * Vector3.new(1, 0, 0), 7) then
-				local pollentext = 0
-				local suc, res = pcall(function()
-					pollentext = v.BalloonBody.GuiAttach.Gui.Bar.TextLabel.Text:gsub(",", "")
-				end)
-				if not suc then warn("Error fetching pollen in balloon:", res) end
-				return tonumber(pollentext)
-			end
-		end
-	end
-	return 0
+    for i, v in pairs(workspace.Balloons.HiveBalloons:GetChildren()) do
+        if v.Name == "HiveBalloonInstance" and v:FindFirstChild("BalloonRoot") and v:FindFirstChild("BalloonBody") then
+            if allvars.api.magnitude(v.BalloonRoot.Position * Vector3.new(1, 0, 0), LocalPlayer.SpawnPos.Value.Position * Vector3.new(1, 0, 0), 7) then
+                local pollentext = 0
+                local suc, res = pcall(function()
+                    pollentext = v.BalloonBody.GuiAttach.Gui.Bar.TextLabel.Text:gsub(",", "")
+                end)
+                if not suc then warn("Error fetching pollen in balloon:", res) end
+                return tonumber(pollentext)
+            end
+        end
+    end
+    return 0
 end
 
 function shouldconvertnow()
-	local doconvert = false
-	if getBagPercentage() >= allvars.convertatx then
-		doconvert = "Converting at the hive"
-	end
-	if allvars.converthiveballoon then
-		local blessing = getBuffTime("Balloon Blessing")
-		if blessing <= (allvars.convertballoonat * 60) and getpolleninballoon() > 0 then
-			doconvert = "Converting hive balloon"
-		end
-	end
-	if isfarmingpopstar() then
-		doconvert = false
-	end
-	return doconvert
+    local doconvert = false
+    if getBagPercentage() >= allvars.convertatx then
+        doconvert = "Converting at the hive"
+    end
+    if allvars.converthiveballoon then
+        local blessing = getBuffTime("Balloon Blessing")
+        if blessing <= (allvars.convertballoonat * 60) and getpolleninballoon() > 0 then
+            doconvert = "Converting hive balloon"
+        end
+    end
+    if isfarmingpopstar() then
+        doconvert = false
+    end
+    return doconvert
 end
 
 function trytoconvert()
@@ -4106,7 +4218,7 @@ function trytoconvert()
         local toconvert = shouldconvertnow()
         if toconvert then
             print(toconvert) -- Prints the reason of converting
-            local hivepos = (LocalPlayer.SpawnPos.Value + Vector3.new(0, 0, 9)).Position
+            local hivepos = (LocalPlayer.SpawnPos.Value + Vector3.new(0, 0, 7)).Position
             local root = allvars.api.getRoot()
             while root and root.Parent and allvars.isrunning and allvars.autofarm and allvars.autoconvert do
                 local shouldistopnow = false
@@ -4120,12 +4232,16 @@ function trytoconvert()
                     end
                 end
                 if shouldistopnow then break end
-                if not allvars.api.magnitude(root.Position, hivepos, 6) then
-                    tweento(hivepos)
+                if not (allvars.api.magnitude(root.Position, hivepos, 6) and ActivateButton.Visible) then
+                    tweento(hivepos, nil, nil, true)
                 end
                 local startedpressing = tick()
                 while ActivateButton.TextBox.Text == "Make Honey" do
-                    pressactivatebutton()
+                    if allvars.remotes then
+                        events.ClientCall("PlayerHiveCommand", "ToggleHoneyMaking")
+                    else
+                        pressactivatebutton()
+                    end
                     if tick() - startedpressing >= 5 then
                         warn("Unable to convert!")
                         allvars.api.getHumanoid().Health = 0
@@ -4139,13 +4255,16 @@ function trytoconvert()
             -- wait for all bees to finish converting
             local waiting = tick()
             while tick() - waiting <= 5 and allvars.autofarm and allvars.isrunning do task.wait() end
+            allvars.lastfarmbadge = nil -- resend hooky
         end
     end)
 end
 
 function canCollectToken(token)
-	return isfield(token.Position) and (not allvars.api.magnitude(allvars.api.getRoot().Position * Vector3.new(1, 0, 1), token.Position * Vector3.new(1, 0, 1), 4))
+    return isfield(token.Position) 
+        and (not allvars.api.magnitude(allvars.api.getRoot().Position * Vector3.new(1, 0, 1), token.Position * Vector3.new(1, 0, 1), 4))
         and (token.Position - isfield(token.Position).Position).Y <= 10 and (token.Position - isfield(token.Position).Position).Y >= 2
+        and ispathclear(allvars.api.getRoot().Position, token.Position)
 end
 
 function farmobj(part, farmuntilgone, parttowait)
@@ -4154,19 +4273,12 @@ function farmobj(part, farmuntilgone, parttowait)
         local hum = allvars.api.getHumanoid()
         if not root or not hum then return end
         local start = tick()
-        local function disconnect()
-            if gettingtoken then
-                gettingtoken:Disconnect()
-                gettingtoken = nil
-            end
-        end
-        gettingtoken = RunService.RenderStepped:Connect(function()
+        while task.wait() do
             if not (root.Parent and hum.Parent and part.Parent) then
-                disconnect()
+                break
             end
             if not allvars.isrunning or not allvars.autofarm then return end
             if part:GetAttribute("collected") then
-                disconnect()
                 return
             end
             if tick() - start >= 5 then
@@ -4175,7 +4287,6 @@ function farmobj(part, farmuntilgone, parttowait)
                     task.wait(1.5)
                     part:SetAttribute("collected", false)
                 end)
-                disconnect()
                 return
             end
             if farmuntilgone and parttowait.Parent then
@@ -4187,69 +4298,137 @@ function farmobj(part, farmuntilgone, parttowait)
                     hum:MoveTo(part.Position)
                 end
             end
-        end)
-        repeat task.wait() until gettingtoken == nil or not gettingtoken.Connected
+        end
     end)
 end
 
 function collecttokensonfield(field, forcetokens)
-	if not forcetokens then
-		if allvars.ignorealltokens then return end
-	end
-	local root = allvars.api.getRoot()
-	local hum = allvars.api.getHumanoid()
-	if not root or not hum then return end
-	local sortedtokens = {}
-	for i, v in pairs(workspace.Collectibles:GetChildren()) do
-		if isfield(v.Position) and isfield(v.Position).Name == field.Name and not v:GetAttribute("collected") then
-			local Priority = 1
-			local Ignore = false
-			if v:FindFirstChild("BackDecal") then
-				if v.BackDecal.Texture == "rbxassetid://1629547638" then
-					Priority = math.huge
-				elseif v.BackDecal.Texture == "rbxassetid://1472135114" and allvars.ignorehoneytokens and not forcetokens then
-					Ignore = true
-				else
-					for i, priority in pairs(priorites) do
-						if v.BackDecal.Texture == priority.Asset and priority.Enabled then
-							Priority = priority.Default or 2
-						end
-					end
-				end
-			end
-			if not Ignore then
-				table.insert(sortedtokens, {
-					Distance = allvars.api.magnitude(root.Position, v.Position),
-					Priority = Priority,
-					Token = v
-				})
-			end
-		end
-	end
-	table.sort(sortedtokens, function(a, b)
-		if a.Priority ~= b.Priority then
-			return a.Priority > b.Priority
-		end
-		return a.Distance < b.Distance
-	end)
-	local Token = #sortedtokens > 0 and sortedtokens[1].Token
-	table.clear(sortedtokens)
-	if not Token then
-		return
-	end
-	farmobj(Token)
+    if not forcetokens then
+        if allvars.ignorealltokens then return end
+    end
+    local root = allvars.api.getRoot()
+    local hum = allvars.api.getHumanoid()
+    if not root or not hum then return end
+    local sortedtokens = {}
+    for i, v in pairs(workspace.Collectibles:GetChildren()) do
+        if isfield(v.Position) and isfield(v.Position).Name == field.Name and not v:GetAttribute("collected") then
+            local Priority = 1
+            local Ignore = false
+            if not ispathclear(root.Position, v.Position) then
+                Ignore = true
+            end
+            if v:FindFirstChild("BackDecal") then
+                if v.BackDecal.Texture == "rbxassetid://1629547638" then
+                    Priority = math.huge
+                elseif v.BackDecal.Texture == "rbxassetid://1472135114" and allvars.ignorehoneytokens and not forcetokens then
+                    Ignore = true
+                else
+                    for i, priority in pairs(priorites) do
+                        if v.BackDecal.Texture == priority.Asset and priority.Enabled then
+                            Priority = priority.Default or 2
+                        end
+                    end
+                end
+            end
+            if not Ignore then
+                table.insert(sortedtokens, {
+                    Distance = allvars.api.magnitude(root.Position, v.Position),
+                    Priority = Priority,
+                    Token = v
+                })
+            end
+        end
+    end
+    table.sort(sortedtokens, function(a, b)
+        if a.Priority ~= b.Priority then
+            return a.Priority > b.Priority
+        end
+        return a.Distance < b.Distance
+    end)
+    local Token = #sortedtokens > 0 and sortedtokens[1].Token
+    table.clear(sortedtokens)
+    if not Token then
+        return
+    end
+    farmobj(Token)
+end
+
+function smartclaimbadge(name, tier)
+    tasks.add("claiming badge", function()
+        local tries = 0
+        while tries <= 3 do
+            task.spawn(function()
+                if allvars.discordwebhookenabled and allvars.discordwebhookurl:match("(https://discord%.com)") then
+                    supersaferequest(allvars.discordwebhookurl, "POST", nil, HttpService:JSONEncode(buildbadgebody(name, nil, nil, true, tier)))
+                end
+            end)
+            if allvars.remotes then
+                if not events.ClientCall("BadgeEvent", "Collect", name) then
+                    tries = tries + 1
+                    task.wait(0.5)
+                end
+                updatestatcache()
+            else
+                hidealluis()
+                local content
+                content = openbsstab("Badges")
+                local TIMEOUT = 10
+                local startTime = tick()
+
+                local function findbagebyname(name)
+                    content = openbsstab("Badges")
+                    for _, child in ipairs(content.Frame:GetChildren()) do
+                        if child.Name == "BadgeBox" and child.TitleBar.Text:find(name .. " Badge") then
+                            return child
+                        end
+                    end
+                end
+
+                local function isVisible(frame)
+                    local sfPos = content.AbsolutePosition
+                    local sfSize = content.AbsoluteSize
+
+                    local fPos = frame.AbsolutePosition
+                    local fSize = frame.AbsoluteSize
+
+                    return fPos.Y >= sfPos.Y and (fPos.Y + fSize.Y) <= (sfPos.Y + sfSize.Y)
+                end
+
+                while (tick() - startTime) < TIMEOUT do
+                    content = openbsstab("Badges")
+                    local row = findbagebyname(name)
+                    if row and isVisible(row) then
+                        local startTime = tick()
+                        while (tick() - startTime < TIMEOUT) and (row.TaskBar.FillBar.Size.X.Scale >= 1) and not row.TitleBar.Text:find("Grandmaster") do
+                            clickframe(row.TaskBar.FillBar)
+                        end
+                        return warn("badge loop end"), showalluis()
+                    else
+                        local x, y = getCenter(content)
+                        VirtualInputManager:SendMouseWheelEvent(x, y, y >= row.AbsolutePosition.Y, game)
+                    end
+                    wait(0.02)
+                end
+                showalluis()
+            end
+        end
+    end)
 end
 
 function smartredeemcode(code)
     tasks.add("redeeming code", function()
         local tries = 0
         while tries <= 3 do
-            openbsstab("System")
-            pcall(function()
-                local promobox = LocalPlayer.PlayerGui.ScreenGui.Menus.Children.System.Content.PromoCodeBox
-                promobox.TextField.Text = code
-                firesignal(promobox.RedeemButton.MouseButton1Click)
-            end)
+            if allvars.remotes then
+                events.ClientCall("PromoCodeEvent", code)
+            else
+                openbsstab("System")
+                pcall(function()
+                    local promobox = LocalPlayer.PlayerGui.ScreenGui.Menus.Children.System.Content.PromoCodeBox
+                    promobox.TextField.Text = code
+                    firesignal(promobox.RedeemButton.MouseButton1Click)
+                end)
+            end
             task.wait(LocalPlayer:GetNetworkPing()+0.1)
             local codes = ReplicatedStorage.Events.RetrievePlayerStats:InvokeServer().Codes
             if table.find(codes or {}, code) then return end
@@ -4292,6 +4471,9 @@ function buildwebhookbody()
 
     local embeds = {embed1}
 
+    local blessing = bufftilemodule.GetBuffTile("Balloon Blessing")
+    local balloonpollen = truncate(getpolleninballoon())
+
     table.insert(embed1.fields, {
         name = "<:honey:1514946024521601054> Honey Per Hour",
         value = allvars.honeyperhourstring,
@@ -4313,6 +4495,18 @@ function buildwebhookbody()
     table.insert(embed1.fields, {
         name = "<:time:1514946582884126820> Elapsed Time",
         value = allvars.elapsedtimestring,
+        inline = true
+    })
+
+    table.insert(embed1.fields, {
+        name = "<:blessing:1516865755344404730> Balloon Blessing",
+        value = blessing and (blessing.Combo .. "x") or "0x",
+        inline = true
+    })
+
+    table.insert(embed1.fields, {
+        name = "<:bblessing:1516865755344404730> Balloon Pollen",
+        value = balloonpollen,
         inline = true
     })
 
@@ -4345,6 +4539,7 @@ function buildwebhookbody()
     end
 
     local body = {
+        content = string.rep("-", 30),
         embeds = embeds
     }
 
@@ -4353,6 +4548,7 @@ end
 
 function builddisconnectbody(reason)
     local body = {
+        content = string.rep("-", 30),
         embeds = {{
             fields = {},
             color = 0xd62c29,
@@ -4360,7 +4556,7 @@ function builddisconnectbody(reason)
                 name = "Lunar - Disconnected",
                 icon_url = "https://github.com/lunar-repo/pic/raw/main/warn.png"
             },
-            description = reason
+            description = reason,
         }}
     }
 
@@ -4370,6 +4566,7 @@ end
 function builddeathbody()
     local deathinfield = allvars.api.getRoot() and isfield(allvars.api.getRoot().Position)
     local body = {
+        content = string.rep("-", 30),
         embeds = {{
             fields = {},
             color = 0xFF8585,
@@ -4386,6 +4583,7 @@ end
 
 function buildautoprogbuybody(name, autoprog)
     local body = {
+        content = string.rep("-", 30),
         embeds = {{
             fields = {},
             color = 0x4AFF8C,
@@ -4401,8 +4599,27 @@ function buildautoprogbuybody(name, autoprog)
     return body
 end
 
+function buildviciousbody(field, viclevel, gifted)
+    local body = {
+        content = string.rep("-", 30),
+        embeds = {{
+            fields = {},
+            color = 0,
+            author = {
+                name = "Lunar - Combat",
+                icon_url = "https://github.com/lunar-repo/pic/raw/main/Reindeer_Antlers.png"
+            },
+            description = "Attacking level " .. viclevel .. (gifted and " gifted " or " ") .. "vicious bee in the " .. field .. " " .. builddiscordtimestamp(),
+            title = "<:vic:1517959433374793799> Vicious Bee"
+        }}
+    }
+
+    return body
+end
+
 function buildfirefliesbody(field)
     local body = {
+        content = string.rep("-", 30),
         embeds = {{
             fields = {},
             color = 0xFFF04A,
@@ -4418,36 +4635,138 @@ function buildfirefliesbody(field)
     return body
 end
 
+function buildbadgebody(field, req, done, redeem, tier)
+    local body = {
+        content = string.rep("-", 30),
+        embeds = {{
+            fields = {},
+            color = 0x8f00ff,
+            author = {
+                name = "Lunar - Badges",
+                icon_url = "https://github.com/lunar-repo/pic/raw/main/Reindeer_Antlers.png"
+            },
+            title = "<:badge:1518701426669519078> " .. (not redeem and "Farming" or "Redeeming") .. " " .. field .. " Badge",
+            description = not redeem and string.format("Current Progress: %s/%s", truncate(done), truncate(req)) or string.format("Current Tier: %s", badgesmodule.GetTierNames()[tier+1])
+        }}
+    }
+
+    return body
+end
+
+function findaphid(field)
+    for i, v in pairs(workspace.Monsters:GetChildren()) do
+        if v.Name:lower():find("Aphid") and v:FindFirstChild("HumanoidRootPart") and isfield(v.HumanoidRootPart.Position) == field then
+            return v
+        end
+    end
+end
+
 function avoidmobs(field)
+    if not allvars.avoidmobs then return end
     tasks.add("avoiding mob", function()
         if not allvars.autofarm or not allvars.isrunning then return end
         local humanoid = allvars.api.getHumanoid()
-        if not humanoid or humanoid.Health <= 0 then return end
+        local root = allvars.api.getRoot()
+        if not humanoid or humanoid.Health <= 0 or not root then return end
 
-        local monsterTarget = nil
-        for _, v in pairs(workspace.Monsters:GetChildren()) do
-            if v.Name:find("Vicious") then continue end
-            if v:FindFirstChild("HumanoidRootPart") and isfield(v.HumanoidRootPart.Position) == field and v:FindFirstChild("Target") and v.Target.Value == LocalPlayer.Character then
-                monsterTarget = v
-                break
+        local aphid = findaphid()
+        if aphid then
+            local function getaphidpos()
+                return aphid.HumanoidRootPart.Position
+            end
+
+            local function clamptozone(pos, zonepart)
+                local cf = zonepart.CFrame
+                local half = zonepart.Size/2
+                local localpos = cf:PointToObjectSpace(pos)
+                local x = math.clamp(localpos.X, -half.X, half.X)
+                local z = math.clamp(localpos.Z, -half.Z, half.Z)
+                return cf:PointToWorldSpace(Vector3.new(x, localpos.Y, z))
+            end
+
+            while aphid.Parent and task.wait() do
+                local playerpos = allvars.api.getRoot().Position
+                local aphidpos = getaphidpos()
+                local threshold = aphid.PrimaryPart.Size.Magnitude * 1.5
+
+                local toplayer = playerpos - aphidpos
+                local dist = toplayer.Magnitude
+
+                if dist < threshold then
+                    local awaydir = toplayer.Unit
+                    local towardcenter = (field.Position - playerpos).Unit
+
+                    local movedir = (awaydir * 0.7 + towardcenter * 0.3).Unit
+                    local movepos = playerpos + movedir * threshold
+                    movepos = clamptozone(movepos, field)
+                    humanoid:MoveTo(movepos)
+                end
             end
         end
 
-        if monsterTarget then
-            safewalk(field.Position, true)
-            local i = 0
-            while humanoid.Parent and monsterTarget and monsterTarget.Parent and task.wait() do
-                if not allvars.autofarm or not allvars.isrunning then return end
-                if field.Name == "Pine Tree Forest" then -- mantis being positioned in a wierd way that bees cannot attack unless close
-                    i = i + 1
-                    if i % 2 == 0 then
-                        safewalk(field.Position + Vector3.new(0, 0, 10), true)
-                    else
-                        safewalk(field.Position - Vector3.new(0, 0, 10), true)
-                    end
-                end
+        local werewolf = workspace.Monsters:FindFirstChild("Werewolf (Lvl 7)")
+        if werewolf and werewolf:FindFirstChild("Target") and werewolf.Target.Value == LocalPlayer.Character then
+            print("avoiding werewolf")
+            tweento(workspace.NewFlowerZones["Cactus Field"].Position, 16)
+            while werewolf.Parent do
                 humanoid.Jump = true
                 task.wait(0.8)
+            end
+            return print("avoided the big bad wolf")
+        end
+
+        local monsterTarget = {}
+        for _, v in pairs(workspace.Monsters:GetChildren()) do
+            if v.Name:find("Vicious") or v.Name:find("Stump") or v.Name:find("Windy") or v.Name:find("Stick") or v.Name:find("Aphid") then continue end
+            if v:FindFirstChild("HumanoidRootPart") and isfield(v.HumanoidRootPart.Position) == field and v:FindFirstChild("Target") and v.Target.Value == LocalPlayer.Character then
+                table.insert(monsterTarget, v)
+            end
+        end
+
+        if #monsterTarget > 0 then
+            safewalk(field.Position, true)
+            for i, v in pairs(monsterTarget) do
+                local i = 0
+                local starthp = v.Humanoid.Health
+                local starttick = tick()
+                while humanoid.Parent and v.Parent and task.wait() do
+                    if v.Humanoid.Health == starthp and tick() - starttick >= 45 then
+                        warn("timeout on attack no damage dealt")
+                        local tweeningposition = Instance.new("AlignPosition")
+                        tweeningposition.Mode = Enum.PositionAlignmentMode.OneAttachment
+                        tweeningposition.Attachment0 = root.RootAttachment
+                        tweeningposition.MaxForce = math.huge
+                        tweeningposition.Position = field.Position + Vector3.new(0, 30, 0)
+                        tweeningposition.Parent = root
+                        tweeningposition.MaxVelocity = 150
+                        tweeningposition.Name = "monsterfix"
+
+                        local tweeningorientation = Instance.new("AlignOrientation")
+                        tweeningorientation.Attachment0 = root.RootAttachment
+                        tweeningorientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
+                        tweeningorientation.RigidityEnabled = true
+                        tweeningorientation.CFrame = root.CFrame
+                        tweeningorientation.Parent = root
+                        tweeningorientation.Name = "monsterfix"
+                        repeat task.wait() until not v.Parent
+                        tweeningposition.Position = field.Position + Vector3.new(0, 5, 0)
+                        repeat task.wait() until allvars.api.magnitude(root.Position, field.Position + Vector3.new(0, 5, 0), 3)
+                        tweeningposition:Destroy()
+                        tweeningorientation:Destroy()
+                    end
+                    if not allvars.autofarm or not allvars.isrunning then return end
+                    if field.Name == "Pine Tree Forest" then
+                        local p = Vector3.new(0, 0, 10)
+                        i = i + 1
+                        if i % 2 == 0 then
+                            safewalk(field.Position + p, true)
+                        else
+                            safewalk(field.Position - p, true)
+                        end
+                    end
+                    humanoid.Jump = true
+                    task.wait(0.8)
+                end
             end
         end
     end)
@@ -4455,49 +4774,49 @@ end
 
 function farmfireflies()
     if not allvars.api.getRoot() then return {} end
-	if not isNight() then
-		allvars.fireflyfield = nil
-	end
-	local flies = {}
-	for i, v in pairs(workspace.NPCBees:GetChildren()) do
-		if v.Name == "Firefly" then
-			local fireflyfield = isfield(v.Position)
-			local fields = {
-				"Spider Field",
-				"Bamboo Field",
-				"Strawberry Field",
-				"Rose Field",
-				"Pineapple Patch",
-				"Cactus Field"
-			}
-            for i, v in pairs(fields) do
+    if not isNight() then
+        allvars.fireflyfield = nil
+    end
+    local flies = {}
+    for i, v in pairs(workspace.NPCBees:GetChildren()) do
+        if v.Name == "Firefly" then
+            local fireflyfield = isfield(v.Position)
+            local fields = {
+                "Spider Field",
+                "Bamboo Field",
+                "Strawberry Field",
+                "Rose Field",
+                "Pineapple Patch",
+                "Cactus Field"
+            }
+            for _, v in pairs(deepcopy(fields)) do
                 if #getbeesdata().all < allvars.fieldbeereqs[v] then
-                    table.remove(fields, i)
+                    table.remove(fields, table.find(fields, v))
                 end
             end
-			if fireflyfield and v.BodyVelocity.Velocity == Vector3.zero and allvars.fireflyfield ~= fireflyfield and (v.Position - fireflyfield.Position).Y < 3 then
+            if fireflyfield and v.BodyVelocity.Velocity == Vector3.zero and allvars.fireflyfield ~= fireflyfield and (v.Position - fireflyfield.Position).Y < 3 then
                 allvars.fireflyfield = fireflyfield
                 if not table.find(fields, fireflyfield.Name) then
                     allvars.fireflyfield = nil
                     return {}
                 end
-				print("Fireflies in the " .. tostring(fireflyfield))
+                print("Fireflies in the " .. tostring(fireflyfield))
                 task.spawn(function()
                     if allvars.discordwebhookenabled and allvars.discordwebhookurl:match("(https://discord%.com)") then
                         supersaferequest(allvars.discordwebhookurl, "POST", nil, HttpService:JSONEncode(buildfirefliesbody(fireflyfield.Name)))
                     end
                 end)
-			end
-			if (fireflyfield and table.find(fields, fireflyfield.Name) and v.BodyVelocity.Velocity == Vector3.zero) or allvars.fireflyfield then
-				allvars.fieldtofarm = allvars.fireflyfield
-			end
-			if fireflyfield and table.find(fields, fireflyfield.Name) and allvars.api.getRoot() and isfield(allvars.api.getRoot().Position) == fireflyfield and v.BodyVelocity.Velocity == Vector3.zero  then
-				if not table.find(flies, v) then
-					table.insert(flies, v.Position)
-				end
-			end
-		end
-	end
+            end
+            if (fireflyfield and table.find(fields, fireflyfield.Name) and v.BodyVelocity.Velocity == Vector3.zero) or allvars.fireflyfield then
+                allvars.fieldtofarm = allvars.fireflyfield
+            end
+            if fireflyfield and table.find(fields, fireflyfield.Name) and allvars.api.getRoot() and isfield(allvars.api.getRoot().Position) == fireflyfield and v.BodyVelocity.Velocity == Vector3.zero  then
+                if not table.find(flies, v) then
+                    table.insert(flies, v.Position)
+                end
+            end
+        end
+    end
 
     local current = allvars.api.getRoot().Position
     local sorted = {}
@@ -4513,7 +4832,60 @@ function farmfireflies()
         table.insert(sorted, current)
     end
 
-	return sorted
+    return sorted
+end
+
+function getmetorites()
+    local meteors = {}
+    local field
+    for i, v in pairs(workspace.Particles:GetChildren()) do
+        if v.Name == "WarningDisk" and tostring(v.BrickColor) == "Royal Purple" then
+            table.insert(meteors, {part=v, size=v.Size.X, trans=v.Transparency})
+            local mfield = isfield(v.Position)
+            if mfield and #getbeesdata().all >= allvars.fieldbeereqs[mfield] then
+                field = mfield
+            end
+        end
+    end
+
+    -- prioritize the rites
+    table.sort(meteors, function(a, b)
+        local scoreA = a.size + (a.trans * 10)
+        local scoreB = b.size + (b.trans * 10)
+        return scoreA < scoreB
+    end)
+
+    if #meteors == 0 then
+        allvars.lastmeteordetect = tick()
+    end
+
+    return meteors, field
+end
+
+function farmmeteorites()
+    local meteors, field = getmetorites()
+    if field and #meteors > 0 then
+        tasks.add("farming meteors", function()
+            while tick() - allvars.lastmeteordetect <= 8 do
+                meteors, field = getmetorites()
+                if field and #meteors > 0 then
+                    local root = allvars.api.getRoot()
+                    if not root then continue end
+                    local fieldmag = allvars.api.magnitude(root.Position * Vector3.new(0, 1, 0), field.Position * Vector3.new(0, 1, 0), 25)
+                    if not isfield(root.Position) or isfield(root.Position).Name ~= field.Name or not fieldmag then
+                        tweento(field.Position + Vector3.new(0, 5, 0))
+                    end
+                    local bestmeteor = meteors[1]
+                    farmobj(bestmeteor, true, bestmeteor)
+                    local j = tick()
+                    while tick() - j >= 6 do
+                        collecttokensonfield()
+                        task.wait()
+                    end
+                end
+            end
+        end)
+    end
 end
 
 function getnexthiveslotprice()
@@ -4531,7 +4903,7 @@ function getnexthiveslotprice()
 end
 
 function getsprinkler()
-	return getclientstatcache("EquippedSprinkler")
+    return getclientstatcache("EquippedSprinkler")
 end
 
 function placesprinklers(field, samespot)
@@ -4608,17 +4980,59 @@ function placesprinklers(field, samespot)
     end)
 end
 
-function getWarningDisks()
-	local warningDisks = {}
-	for i,v in pairs(workspace.Particles:GetChildren()) do
-		if v.Name == "WarningDisk" or v.Name == "Thorn" or v.Name == "Vicious" then 
-			table.insert(warningDisks, v) 
-		end
-	end
-	return warningDisks
+local function addBounds(model)
+    local cf, size = model:GetBoundingBox()
+
+    local bounds = Instance.new("Part")
+    bounds.Name = "bounds"
+    bounds.Size = size + Vector3.new(16, 16, 16, 16)
+    bounds.CFrame = cf
+    bounds.Transparency = 1
+    bounds.CanCollide = false
+    bounds.CanTouch = false
+    bounds.CanQuery = false
+    bounds.Anchored = true
+    bounds.Parent = model
+
+    return bounds
 end
 
-local function isSafeFromDisks(pos, disks, excludeDisk)
+function getharmfulobjects()
+    local warningDisks = {}
+    for i,v in pairs(workspace.Particles:GetChildren()) do
+        if v.Name == "WarningDisk" or v.Name == "Thorn" or v.Name == "Vicious" then 
+            table.insert(warningDisks, v) 
+        end
+    end
+    for i,v in pairs(workspace.Monsters:GetChildren()) do
+        if not v:FindFirstChild("bounds") then
+            addBounds(v)
+        end
+        table.insert(warningDisks, v.bounds) 
+    end
+    return warningDisks
+end
+
+function ispathclear(fromPos, toPos)
+    local dir = toPos - fromPos
+    if dir.Magnitude < 0.01 then return true end
+    local mid = (fromPos + toPos) / 2
+    local dist = dir.Magnitude
+    local cf = CFrame.lookAt(mid, mid + dir.Unit)
+    local params = OverlapParams.new()
+    params.FilterType = Enum.RaycastFilterType.Include
+    for _, disk in pairs(getharmfulobjects()) do
+        params.FilterDescendantsInstances = {disk}
+        local s = disk.Size
+        local size = Vector3.new(s.X, s.Y, dist)
+        if #workspace:GetPartBoundsInBox(cf, size, params) > 0 then
+            return false
+        end
+    end
+    return true
+end
+
+function issafefromharm(pos, disks, excludeDisk)
     for _, disk in ipairs(disks) do
         if disk ~= excludeDisk then
             local diskRadius = disk.Size.X / 2
@@ -4631,9 +5045,9 @@ local function isSafeFromDisks(pos, disks, excludeDisk)
     return true
 end
 
-function avoidWarningDisks(field, fieldCenter)
+function avoidharm(field, fieldCenter)
     local playerPos = allvars.api.getRoot().Position
-    local warningDisks = getWarningDisks()
+    local warningDisks = getharmfulobjects()
 
     local ray = Ray.new(playerPos + Vector3.new(0, 100, 0), Vector3.new(1, -735, 1))
     local touchedWarningDisk = workspace:FindPartOnRayWithWhitelist(ray, warningDisks)
@@ -4657,7 +5071,7 @@ function avoidWarningDisks(field, fieldCenter)
         end
 
         local function posValid(pos)
-            return (not field or isfield(pos)) and isSafeFromDisks(pos, warningDisks, touchedWarningDisk)
+            return (not field or isfield(pos)) and issafefromharm(pos, warningDisks, touchedWarningDisk)
         end
 
         if not posValid(safePos) then
@@ -4682,10 +5096,12 @@ function killviciousbee()
         local thorn = workspace.Particles.WTs:FindFirstChild("WaitingThorn")
         local vicbee
         local viclevel = -1
+        local gifted = false
         for i, v in pairs(workspace.Monsters:GetChildren()) do
             if v.Name:find("Vicious Bee") then
                 vicbee = v
                 viclevel = tonumber(v.Name:match("Lvl (%d+)"))
+                gifted = v.Name:lower():find("gifted") ~= nil
                 break
             end
         end
@@ -4698,27 +5114,40 @@ function killviciousbee()
                         tweento(field.Position + Vector3.new(0, 5, 0))
                     end 
                     if not thorn.Parent then return killviciousbee() end
-                    avoidmobs(field)
+                    --avoidmobs(field)
                     if not thorn.Parent then return killviciousbee() end
                     safewalk(thorn.Position)
                     task.wait(0.5)
                     killviciousbee()
                 end
             end
-        elseif vicbee then
+        elseif vicbee and not allvars.ignorevicbee[vicbee] then
             local field = isfield(vicbee.HumanoidRootPart.Position)
             if field and viclevel <= (allvars.vicaveragebeelevel and getbeelevelforcombat() or allvars.maxviclevel) and viclevel >= allvars.minviclevel then
+                task.spawn(function()
+                    if allvars.discordwebhookenabled and allvars.discordwebhookurl:match("(https://discord%.com)") then
+                        supersaferequest(allvars.discordwebhookurl, "POST", nil, HttpService:JSONEncode(buildviciousbody(field.Name, viclevel, gifted)))
+                    end
+                end)
                 allvars.fieldtofarm = field
                 if isfield(allvars.api.getRoot().Position) ~= field then
                     tweento(field.Position)
                 end
                 tasks.add("killing vic", function()
-                    while vicbee.Parent and (allvars.killvic or allvars.forcetasks.killvic) do
+                    local starthp = vicbee:GetAttribute("starthealth") or vicbee.Humanoid.Health
+                    vicbee:SetAttribute("starthealth", starthp)
+                    local starttick = tick()
+                    while vicbee.Parent and (allvars.killvic or allvars.forcetasks.killvic) and task.wait() do
                         if isfield(allvars.api.getRoot().Position) ~= field then
                             tweento(field.Position)
                         end
-                        avoidWarningDisks(field, field.Position)
-                        task.wait()
+                        if vicbee.Humanoid.Health > (starthp - 50) and tick() - starttick >= 30 then
+                            allvars.ignorevicbee[vicbee] = true
+                            warn("little damage dealt in 30 sec, stuck on vic bee. ignoring vicious bee for now")
+                            return
+                        end
+                        avoidharm(field, field.Position)
+                        collecttokensonfield(field)
                     end
                 end)
             end
@@ -4741,9 +5170,12 @@ function mainautofarmloop()
 
             -- auto prog field
             if allvars.autoprogress and allvars.autoprogdata then
+                local capabilities = allvars.autoprogcapabs
                 local _earlybreak = false
                 for i, v in pairs(allvars.autoprogdata) do
-                    if v.event == "field" then
+                    if v.event == "badges" then
+                        allvars.autoprogbadgeorder = v.value
+                    elseif v.event == "field" and table.find(capabilities, "Automaticaly select fields") then
                         local selectedField = v.value[1]
                         for _, field in ipairs(v.value) do
                             if #getbeesdata().all >= allvars.fieldbeereqs[field] then
@@ -4753,7 +5185,7 @@ function mainautofarmloop()
                             end
                         end
                         allvars.fieldtofarm = workspace.NewFlowerZones[selectedField]
-                    elseif v.event == "codes" and not allvars.redeemedcodes then
+                    elseif v.event == "codes" and table.find(capabilities, "Redeem codes")  and not allvars.redeemedcodes then
                         if #getbeesdata().all >= (v.bees or 0) then
                             local codes = ReplicatedStorage.Events.RetrievePlayerStats:InvokeServer().Codes
                             for _, code in pairs(v.value) do
@@ -4764,7 +5196,7 @@ function mainautofarmloop()
                             _earlybreak = true
                             allvars.redeemedcodes = true
                         end
-                    elseif v.event == "collectibles" then
+                    elseif v.event == "collectibles" and table.find(capabilities, "Collect secret rares")  then
                         local function bees(n) return function() return #getbeesdata().all >= n end end
                         local positions = {
                             { pos = Vector3.new(34.86427688598633, 57.96503829956055, 190.51075744628906), req = bees(0), label = "royal jelly on dandelion" },
@@ -4837,15 +5269,19 @@ function mainautofarmloop()
                             current = entry.pos 
                             task.wait()
                         end
-                    elseif v.event == "bees" then
-                        if #getbeesdata().all < v.value then
+                    elseif v.event == "bees" and table.find(capabilities, "Add bees and use royal jelly")  then
+                        if #getbeesdata().all < v.value and getbeesdata().emptycells > 0 then
                             if #getbeesdata().all >= 25 then
-                                if getclientstatcache("Honey") < getnexthiveslotprice() then continue end
-                                buygear("Hive Slot", "top")
+                                if getclientstatcache("Honey") >= getnexthiveslotprice() then
+                                    buygear("Hive Slot", "top")
+                                end
+                                if getbeesdata().emptycells == 0 then
+                                    continue
+                                end
                             end
                             if addbasicbee() then _earlybreak = true end
                         end
-                    elseif v.event == "gear" then
+                    elseif v.event == "gear" and table.find(capabilities, "Purchase gear") then
                         local owned = {}
                         for _, v in pairs(getclientstatcache("Accessories") or {}) do
                             table.insert(owned, v)
@@ -4890,7 +5326,7 @@ function mainautofarmloop()
                             if highestOwnedPerSlot[slotType] and i <= highestOwnedPerSlot[slotType] then continue end
                             local buyName = slotType == "planter" and gearName:sub(1, -8) .. " Planter" or gearName
                             if not hasaccessshopfuncs[meta[1]]() then
-                                allvars.nextautoprogitem = "[LOCKED]"
+                                allvars.nextautoprogitem = "[Locked]"
                                 continue
                             end
 
@@ -4907,6 +5343,20 @@ function mainautofarmloop()
                         end
                     end
                 end
+                sortbestbadges(nil,nil,nil,true) -- redeem badges
+                local badgestofarm = allvars.forcetasks.autoprogbadges
+                if #badgestofarm > 0 then
+                    local badge = badgestofarm[1]
+                    allvars.fieldtofarm = workspace.NewFlowerZones[badge.zone]
+                    if (allvars.lastfarmbadge or {}).zone ~= badge.zone then
+                        allvars.lastfarmbadge = {zone = badge.zone}
+                        task.spawn(function()
+                            if allvars.discordwebhookenabled and allvars.discordwebhookurl:match("(https://discord%.com)") then
+                                supersaferequest(allvars.discordwebhookurl, "POST", nil, HttpService:JSONEncode(buildbadgebody(badge.name, badge.req, badge.done)))
+                            end
+                        end)
+                    end
+                end
                 if _earlybreak then continue end  -- go buy next item, or just do the next auto-prog event
             end        
 
@@ -4916,6 +5366,11 @@ function mainautofarmloop()
                     safewalk(ff, true)
                 end
                 allvars.forcetasks.fireflies = false
+            end
+
+            if allvars.farmfireflies or allvars.forcetasks.meteors then
+                farmmeteorites()
+                allvars.forcetasks.meteors = false
             end
 
             killviciousbee()
@@ -4951,11 +5406,12 @@ function mainautofarmloop()
     end)
 end
 
+local deathconnection
 local function deathhandler(char)
     if not char then return end
     local humanoid = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 4)
     if not humanoid then return end
-    humanoid.Died:Once(function()
+    deathconnection = humanoid.Died:Once(function()
         task.spawn(function()
             if allvars.discordwebhookenabled and allvars.discordwebhookurl:match("(https://discord%.com)") then
                 supersaferequest(allvars.discordwebhookurl, "POST", nil, HttpService:JSONEncode(builddeathbody()))
@@ -4970,11 +5426,25 @@ end
 deathhandler(LocalPlayer.Character)
 
 local respawnhandlerconnection = LocalPlayer.CharacterAdded:Connect(function(char)
-	repeat task.wait() until char.Parent == workspace
-	disableall()
-	claimhive()
-	allvars.redosprinklers = true
+    repeat task.wait() until char.Parent == workspace
+    disableall()
+    claimhive()
+    allvars.redosprinklers = true
     deathhandler(char)
+    if allvars.mainautofarmtask then task.cancel(allvars.mainautofarmtask) end
+    if allvars.autofarm then
+        task.spawn(function()
+            local rebootautofarm = function() warn("unknown") end
+            rebootautofarm = function()
+                tasks.deleteall()
+                mainautofarmloop()
+                repeat task.wait() until allvars.mainautofarmtask and coroutine.status(allvars.mainautofarmtask) == "dead"
+                if not allvars.autofarm or not allvars.isrunning then return end
+                rebootautofarm()
+            end
+            rebootautofarm()
+        end)
+    end
 end)
 
 local function maketoggle(tab,name,flag,callback,default,nosave)
@@ -4984,6 +5454,13 @@ local function maketoggle(tab,name,flag,callback,default,nosave)
         Flag = flag,
         Callback = callback,
         NoSave = nosave
+    })
+end
+
+local function makebutton(tab,name,callback)
+    return tab:CreateButton({
+        Name = name,
+        Callback = callback,
     })
 end
 
@@ -5026,6 +5503,7 @@ local homeTab = window:CreateTab("Information", "trending-up")
 local autofarmTab = window:CreateTab("Auto-Farm", "layers-2")
 local combatTab = window:CreateTab("Combat", "swords")
 local webhookTab = window:CreateTab("Webhook", "globe")
+local waxTab = window:CreateTab("Prediction", "flask-conical")
 local settingsTab = window:CreateTab("Config", "settings")
 
 -- home info stuff
@@ -5040,20 +5518,30 @@ local nextbasicegg = homeTab:CreateLabel("Next Egg: N/A")
 
 task.spawn(function()
     while allvars.isloaded do
+        local capabilities = allvars.autoprogcapabs
+        if not table.find(capabilities, "Purchase gear") then
+            allvars.nextautoprogitem = "[Disabled]"
+        end
         local hiveslotnum = (getclientstatcache("Totals", "Purchases", "HiveSlots") or 0) + 1
         local boughtbasiceggs = getclientstatcache("Totals", "Purchases", "Eggs", "Basic") or 1
         local nextbasiceggprice = getEggPrice(boughtbasiceggs)
         local currenthoney = getclientstatcache("Honey")
         local timepassed = math.round(os.clock() - allvars.timeatload)
-	    local honeyearned = currenthoney - allvars.starthoney
+        local honeyearned = currenthoney - allvars.starthoney
         local honeyperhournum = math.floor(honeyearned / timepassed) * 3600
         local elapsedtimestring = truncatetime(os.clock() - allvars.timeatload)
         local honeyperhourstring = truncate(honeyperhournum)
         local sessionhoneynum = math.floor(currenthoney - allvars.starthoney)
         local sessionhoneystring = truncate(sessionhoneynum)
         local nextautoprogitemstring = "Next Item: " .. (allvars.nextautoprogitem or "N/A")
-        local nexthiveslotstring = "Next Hive Slot: " .. truncate(currenthoney) .. "/" .. truncate(getnexthiveslotprice()) .. " (#" .. hiveslotnum .. ")"
-        local nextbasiceggstring = "Next Egg: " .. truncate(currenthoney) .. "/" .. truncate(nextbasiceggprice)
+        local nexthiveslotstring = "Next Hive Slot: " .. (
+            table.find(capabilities, "Add bees and use royal jelly") and 
+                (truncate(currenthoney) .. "/" .. truncate(getnexthiveslotprice()) .. " (#" .. hiveslotnum .. ")")
+            or "[Disabled]")
+        local nextbasiceggstring = "Next Egg: " .. (
+            table.find(capabilities, "Add bees and use royal jelly") and
+                (truncate(currenthoney) .. "/" .. truncate(nextbasiceggprice))
+            or "[Disabled]")
 
         autoprogtasknowlabel:Set(nextautoprogitemstring)
         nexthiveslotlabel:Set(nexthiveslotstring)
@@ -5084,60 +5572,61 @@ end)
 autofarmTab:CreateSection("Autofarm Main")
 local autofarmtoggle = maketoggle(autofarmTab, "Autofarm", "autofarm", function(s)
     allvars.autofarm=s
-    disableall()
     if not s then
         pcall(function()
             task.cancel(allvars.mainautofarmtask)
         end)
         tasks.deleteall()
-		for i, v in pairs(workspace.FieldDecos:GetChildren()) do
-			if v.Name == "Sundower" then
-				v.Circle.CanCollide = true
-			end
-		end
         for i, v in pairs(workspace.FieldDecos:GetChildren()) do
-			if v.Name == "Bamboo" then
-				v.CanCollide = true
-			end
-		end
-		for i, v in pairs(workspace.Decorations.Misc:GetChildren()) do
-			if v.Name == "Mushroom" then
-				v:GetChildren()[1].CanCollide = true
-				v:GetChildren()[2].CanCollide = true
-			end
-		end
-		for i, v in pairs(workspace.Decorations.JumpGames.Mushroom:GetChildren()) do
-			v.CanCollide = true
-		end
-		for i, v in pairs(workspace.Decorations.JumpGames.RockClimbBamboo:GetChildren()) do
-			v.CanCollide = true
-		end
+            if v.Name == "Sundower" then
+                v.Circle.CanCollide = true
+            end
+        end
+        for i, v in pairs(workspace.FieldDecos:GetChildren()) do
+            if v.Name == "Bamboo" then
+                v.CanCollide = true
+            end
+        end
+        for i, v in pairs(workspace.Decorations.Misc:GetChildren()) do
+            if v.Name == "Mushroom" then
+                v:GetChildren()[1].CanCollide = true
+                v:GetChildren()[2].CanCollide = true
+            end
+        end
+        for i, v in pairs(workspace.Decorations.JumpGames.Mushroom:GetChildren()) do
+            v.CanCollide = true
+        end
+        for i, v in pairs(workspace.Decorations.JumpGames.RockClimbBamboo:GetChildren()) do
+            v.CanCollide = true
+        end
         workspace.Gates["15 Bee Gate"].Frame.CanCollide = false
+        disableall()
     else
-		print("Doing: Autofarm")
-		for i, v in pairs(workspace.FieldDecos:GetChildren()) do
-			if v.Name == "Sundower" then
-				v.Circle.CanCollide = false
-			end
-		end
+        print("Doing: Autofarm")
         for i, v in pairs(workspace.FieldDecos:GetChildren()) do
-			if v.Name == "Bamboo" then
-				v.CanCollide = false
-			end
-		end
-		for i, v in pairs(workspace.Decorations.Misc:GetChildren()) do
-			if v.Name == "Mushroom" then
-				v:GetChildren()[1].CanCollide = false
-				v:GetChildren()[2].CanCollide = false
-			end
-		end
-		for i, v in pairs(workspace.Decorations.JumpGames.Mushroom:GetChildren()) do
-			v.CanCollide = false
-		end
-		for i, v in pairs(workspace.Decorations.JumpGames.RockClimbBamboo:GetChildren()) do
-			v.CanCollide = false
-		end
+            if v.Name == "Sundower" then
+                v.Circle.CanCollide = false
+            end
+        end
+        for i, v in pairs(workspace.FieldDecos:GetChildren()) do
+            if v.Name == "Bamboo" then
+                v.CanCollide = false
+            end
+        end
+        for i, v in pairs(workspace.Decorations.Misc:GetChildren()) do
+            if v.Name == "Mushroom" then
+                v:GetChildren()[1].CanCollide = false
+                v:GetChildren()[2].CanCollide = false
+            end
+        end
+        for i, v in pairs(workspace.Decorations.JumpGames.Mushroom:GetChildren()) do
+            v.CanCollide = false
+        end
+        for i, v in pairs(workspace.Decorations.JumpGames.RockClimbBamboo:GetChildren()) do
+            v.CanCollide = false
+        end
         workspace.Gates["15 Bee Gate"].Frame.CanCollide = true
+        disableall()
         task.spawn(function()
             local rebootautofarm = function() warn("unknown") end
             rebootautofarm = function()
@@ -5160,6 +5649,10 @@ maketoggle(autofarmTab, "Auto Sprinkler", "autosprinkler", function(s)
 end)
 makedropdown(autofarmTab, "Field To Farm", "farmingfield", sortedfields, false, function(s)
     disableall()
+    if #getbeesdata().all < allvars.fieldbeereqs[s[1]] then
+        allvars.farmingfield = "Sunflower Field"
+        return mainuimodule:Notify("You do not have enough bees for this zone. Selected sunflower field")
+    end
     allvars.farmingfield = s[1]
 end, {"Sunflower Field"})
 
@@ -5182,6 +5675,15 @@ makedropdown(autofarmTab, "Allowed Materials To Craft", "allowedcraftingmaterial
         table.insert(allvars.allowedcrafts, v)
     end
 end, allvars.allowedcrafts)
+makedropdown(autofarmTab, "Auto Progression Capabilities", "autoprogcapabs", allvars.autoprogcapabs, true, function(s,l)
+    if #s < #allvars.autoprogcapabs and not l then
+        mainuimodule:Notify("Disabling auto progression features may limit or softlock the stage of your account when auto-farming. Choose what to disable with caution.")
+    end
+    allvars.autoprogcapabs = {}
+    for _, v in pairs(s) do
+        table.insert(allvars.autoprogcapabs, v)
+    end
+end, allvars.autoprogcapabs)
 
 -- convert stuff
 autofarmTab:CreateSection("Converting")
@@ -5210,8 +5712,18 @@ end)
 maketoggle(autofarmTab, "Farm Fireflies", "farmfireflies", function(s)
     allvars.farmfireflies=s
 end)
+maketoggle(autofarmTab, "Farm Meteorites", "farmmeteorites", function(s)
+    allvars.farmmeteorites=s
+end)
 
 -- combat stuff
+combatTab:CreateSection("Combat")
+maketoggle(combatTab, "Avoid Mobs", "avoidmobs", function(s)
+    allvars.avoidmobs=s
+    if not s then
+        tasks.delete("avoiding mob")
+    end
+end, true)
 combatTab:CreateSection("Vicious Bee")
 maketoggle(combatTab, "Kill Vicious Bee", "killvic", function(s)
     allvars.killvic=s
@@ -5235,22 +5747,30 @@ maketoggle(webhookTab, "Enable Webhook", "discordwebhookenabled", function(s)
     allvars.discordwebhookenabled=s
     if s then allvars.lastdiscordupdate = 0 end
 end)
-maketextbox(webhookTab, "Webhook URL", "discordwebhookurl", "https://discord.com/api/webhooks/", false, function(s)
+maketextbox(webhookTab, "Webhook URL", "discordwebhookurl", "https://discord.com/api/webhooks/", false, function(s,l)
     if s == "" then return end
-    if not s:match("(https://discord%.com)") then
+    if not s:match("(https://discord%.com)") and not l then
         mainuimodule:Notify("Invalid URL.")
     end
     local suc, req = pcall(game.HttpGet, game, s)
-    if not suc or not req or not HttpService:JSONDecode(req) or not HttpService:JSONDecode(req).token then
+    if (not suc or not req or not HttpService:JSONDecode(req) or not HttpService:JSONDecode(req).token) and not l then
         return mainuimodule:Notify("Webhook does not exist.")
     end
     allvars.discordwebhookurl = s
     allvars.lastdiscordupdate = 0
-    mainuimodule:Notify("Webhook set.")
+    if not l then mainuimodule:Notify("Webhook set.") end
 end)
 makeslider(webhookTab, "Send Update Every X Minutes", "convertballoonatx", {1, 60}, 1, "", function(s)
     allvars.webhookinterval=s
 end, 5)
+
+-- wax stuff
+waxTab:CreateSection("Wax Predictor")
+makebutton(waxTab, "Load Beequip Predictor", function()
+    if _G.waxloaded then return end
+    _G.waxloaded = true
+    loadstring(supersaferequest("https://raw.githubusercontent.com/lunar-repo/beeswarm/refs/heads/main/wax.lua").Body)()
+end)
 
 -- settings stuff
 settingsTab:CreateSection("Movespeed")
@@ -5271,34 +5791,31 @@ dynamicmovespeedtoggle = maketoggle(settingsTab, "Enable Dynamic Movespeed", "dy
         normalmovespeedtoggle:Set(false)
     end
 end)
-makeslider(settingsTab, "Dyanmic Movespeed", "dynamicmovespeedmultiplier", {1.01, 5}, 0.01, "x", function(s)
+makeslider(settingsTab, "Dynamic Movespeed", "dynamicmovespeedmultiplier", {1.01, 5}, 0.01, "x", function(s)
     allvars.dynamicmovespeedmultiplier=s
 end, 2)
+makeslider(settingsTab, "Maximum Dynamic Movespeed", "dynamicmovespeedmaximum", {20, 150}, 3, "", function(s)
+    allvars.dynamicmovespeedmaximum=s
+end, 100)
 settingsTab:CreateSection("Tweening")
-makeslider(settingsTab, "Tween Speed", "tweenspeed", {1, 24}, 1, "", function(s)
-    allvars.tweenspeed=s
-    if s > 12 then
+makeslider(settingsTab, "Tween Speed", "tweenspeed", {1, 24}, 1, "", function(s,l)
+    if s > 12 and not l and allvars.tweenspeed > s then
         mainuimodule:Notify("Tween Speed above 12 is not recommended unless using on an alt account.")
     end
+    allvars.tweenspeed=s
 end, 12)
 settingsTab:CreateLabel("Don't set tween speed above 12 unless using only on alts.")
+settingsTab:CreateSection("Safety")
+maketoggle(settingsTab, "Use Remotes", "remotes", function(s)
+    allvars.remotes=s
+end)
 
 function getnormalwalkspeed()
-    local base = getclientstatcache("ModifierCaches", "Value", "PlayerMovespeed", "_")
-    local toadd = 0
-    for i, v in pairs(getclientstatcache("Modifiers", "PlayerMovespeed", "_", "Mods")) do
-        if v.Op == "Add" then
-            toadd = toadd + v.Value
-        elseif v.Op == "Add" then
-            toadd = toadd * v.Value
-        end
-    end
-    return base + toadd
+    return tonumber(events.ClientCall("RetrievePlayerStatsSummary").Movespeed.Desc)
 end
 
 task.spawn(function()
-    while allvars.isloaded do
-        task.wait()
+    while allvars.isloaded and task.wait() do
         local hum = allvars.api.getHumanoid()
         if not hum then continue end
         if not allvars.speedhackenabled and not allvars.dynamicspeedhackenabled then
@@ -5308,20 +5825,23 @@ task.spawn(function()
         if allvars.speedhackenabled and not allvars.dynamicspeedhackenabled then
             hum.WalkSpeed = allvars.movespeed
         elseif allvars.dynamicspeedhackenabled then
-            hum.WalkSpeed = getnormalwalkspeed() * allvars.dynamicmovespeedmultiplier
+            hum.WalkSpeed = math.min(allvars.dynamicmovespeedmaximum, getnormalwalkspeed() * allvars.dynamicmovespeedmultiplier)
+            task.wait(0.5)
         end
     end
 end)
 
 local autodigconnection = RunService.RenderStepped:Connect(function()
-	if not allvars.isrunning then return end
-	if allvars.autodig then
-		localcollect:Run()
-	end
+    if not allvars.isrunning then return end
+    if allvars.autodig then
+        localcollect:Run()
+    end
 end)
 
 if #getbeesdata().all == 0 then
+    local loadcomp = tick()
     addbasicbee()
+    realloadstart = realloadstart + (tick() - loadcomp)
 end
 
 local antiafkconnection = LocalPlayer.Idled:Connect(function()
@@ -5352,16 +5872,22 @@ end
 local disconnecthandlerconnection = GuiService.ErrorMessageChanged:Connect(function(message)
     local text = CoreGui:WaitForChild("RobloxPromptGui"):WaitForChild("promptOverlay"):WaitForChild("ErrorPrompt"):WaitForChild("MessageArea"):WaitForChild("ErrorFrame"):WaitForChild("ErrorMessage").Text
     warn(text)
-    if text:lower():find("disconnect") or text:lower():find("kick") or text:lower():find("same account") or text:lower():find("shutdown") then
+    if text:lower():find("error code") then
         task.spawn(function()
             allvars.disconnected = true
+            allvars.isrunning = false
             queue_on_teleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/lunar-repo/beeswarm/refs/heads/main/test.lua'))()")
+            local sent = false
             if allvars.discordwebhookenabled and allvars.discordwebhookurl:match("(https://discord%.com)") then
-                supersaferequest(allvars.discordwebhookurl, "POST", nil, HttpService:JSONEncode(builddisconnectbody(message)))
+                repeat
+                    local req = supersaferequest(allvars.discordwebhookurl .. "?wait=true", "POST", nil, HttpService:JSONEncode(builddisconnectbody(message)))
+                    local json = req and req.StatusCode == 200 and req.Body and HttpService:JSONDecode(req.Body)
+                    sent = json and type(json.timestamp) == "string"
+                until sent
             end
             while true do
                 serverhop()
-                task.wait()
+                task.wait(1)
             end
         end)
     end
@@ -5388,31 +5914,48 @@ task.spawn(function()
     end
 end)
 
-local closemenusconnection = RunService.RenderStepped:Connect(function()
+
+local oldpopup
+oldpopup = hookfunction(beepopup.Show, newcclosure(function(...)
     if allvars.autofarm and allvars.isrunning then
-        local beepopup = LocalPlayer.PlayerGui.ScreenGui.BeePopUp
-        local beestatspopup = LocalPlayer.PlayerGui.ScreenGui.BeeStats
-        if beepopup.Visible then task.wait(0.5) firesignal(beepopup.CloseOverlay.MouseButton1Click) end
-        if beestatspopup.Visible then task.wait(0.5) firesignal(beestatspopup.CloseOverlay.MouseButton1Click) end
+        return
     end
-end)
+    return oldpopup(...)
+end))
+
+local oldinspect
+oldinspect = hookfunction(beeinspector.Open, newcclosure(function(...)
+    if allvars.autofarm and allvars.isrunning then
+        return
+    end
+    return oldinspect(...)
+end))
 
 getgenv().LUNAR_UNLOAD = function()
     allvars.isloaded = false
     autofarmtoggle:Set(false)
     tasks.deleteall()
     _G.globaluilibrary:Destroy()
+    _G.waxloaded = false
+    if gethui():FindFirstChild("wax") then gethui().wax:Destroy() end
     autodigconnection:Disconnect()
     antiafkconnection:Disconnect()
     disconnecthandlerconnection:Disconnect()
     respawnhandlerconnection:Disconnect()
     vicaddedhandler:Disconnect()
-    closemenusconnection:Disconnect()
-    if getgenv().MPPNotifsUI then getgenv().MPPNotifsUI:Destroy() end
+    if deathconnection then deathconnection:Disconnect() end
+    restorefunction(beepopup.Open)
+    restorefunction(beeinspector.Open)
 end
 
-if SaveTable.autofarm then
-    autofarmtoggle:Set(true)
-end
+task.spawn(function()
+    if SaveTable.autofarm and SaveTable.autofarm.CurrentValue then
+        task.wait(1)
+        if not allvars.autofarm then autofarmtoggle:Set(true) end
+    end
+end)
 
+alertboxes.Push(nil, "Thank you for using Lunar BSS | Loaded in " .. string.format("%.2f", tick() - realloadstart) .. "s", nil, "Rainbow")
+
+task.wait(1)
 _G.LUNAR_LOADING = false
