@@ -1,10 +1,5 @@
---[[
-  Wax Outcome Predictor GUI
-  Draggable frame, dropdown for beequip + wax type + wax count,
-  Predict button, scrolling results panel grouped by wax count.
-]]
-
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 
 local RQValue = require(game.ReplicatedStorage.RQValue)
@@ -13,35 +8,55 @@ local WaxTypes = require(game.ReplicatedStorage.WaxTypes)
 local BeequipFile = require(game.ReplicatedStorage.Beequips.BeequipFile)
 local BeequipCaseEntry = require(game.ReplicatedStorage.Beequips.BeequipCaseEntry)
 local ClientStatCache = require(game.ReplicatedStorage.ClientStatCache)
-local StatModifiers = require(game.ReplicatedStorage.StatModifiers)
-local BeeStatMods -- optional, falls back if not present
-pcall(function() BeeStatMods = require(game.ReplicatedStorage.BeeStats.BeeStatMods) end)
+local Mods = game:GetService("ReplicatedStorage").StatModifiers
+local BeeStatMods = require(game:GetService("ReplicatedStorage").BeeStats.BeeStatMods)
+local TradeGui = require(game:GetService("ReplicatedStorage").Gui.TradeGui)
 
-local WAX_NAMES = {"Soft", "Hard", "Swirled", "Caustic", "Debug"}
+local WAX_NAMES = {"Soft", "Hard", "Caustic", "Debug"}
+
+local BG_MAIN     = Color3.fromRGB(22, 20, 18)
+local BG_TITLEBAR = Color3.fromRGB(32, 28, 24)
+local BG_CARD     = Color3.fromRGB(27, 24, 21)
+local BG_INPUT    = Color3.fromRGB(36, 32, 28)
+local BG_INPUT_HI = Color3.fromRGB(46, 41, 35)
+local BG_OPTION   = Color3.fromRGB(30, 27, 23)
+local BG_OPTION_HI= Color3.fromRGB(42, 37, 31)
+local BG_TABLE    = Color3.fromRGB(19, 17, 15)
+local ACCENT      = Color3.fromRGB(255, 176, 32)
+local ACCENT_DIM  = Color3.fromRGB(190, 135, 45)
+local TEXT_HI     = Color3.fromRGB(240, 235, 225)
+local TEXT_MID    = Color3.fromRGB(205, 198, 188)
+local TEXT_MUTED  = Color3.fromRGB(140, 134, 124)
+local BORDER      = Color3.fromRGB(54, 48, 41)
+
+local function addHoverTween(obj, idleProp, hoverColor, idleColor)
+	idleColor = idleColor or obj.BackgroundColor3
+	obj.MouseEnter:Connect(function()
+		TweenService:Create(obj, TweenInfo.new(0.12), { [idleProp] = hoverColor }):Play()
+	end)
+	obj.MouseLeave:Connect(function()
+		TweenService:Create(obj, TweenInfo.new(0.12), { [idleProp] = idleColor }):Play()
+	end)
+end
 
 local function _ugDefToTag(def)
-	local tag
-	if def.BeeStat then
-		tag = "B:" .. def.BeeStat
-	elseif def.HiveBonusStat then
-		tag = ("H:" .. def.HiveBonusStat) .. "|O:" .. (def.Op or "Add")
-	elseif def.BeeAbility then
-		tag = "A:" .. def.BeeAbility
-	elseif def.BeeAbilityPool then
-		local s = ""
-		for _, v in ipairs(def.BeeAbilityPool) do s = s .. v[1] .. "/" end
-		tag = "AP:" .. s
-	end
-	if def.Params then
-		tag = tag .. "|P:"
-		for k, v in pairs(def.Params) do tag = tag .. k .. ":" .. tostring(v) .. "|" end
-	end
-	return tag
+    local suc, res = pcall(function()
+        local tag = ""
+        if def.BeeStat then
+            tag = BeeStatMods.GetType(def.BeeStat).DisplayName
+        elseif def.HiveBonusStat then
+            tag = "[Hive Bonus]" .. require(Mods[def.HiveBonusStat]).Description({}, def.Params)
+        elseif def.BeeAbility then
+            tag = "Ability: " .. def.BeeAbility .. " (from wax)"
+        end
+        return tag
+    end)
+    return suc and res or ("err:" .. tostring(res))
 end
 
 local function buildCheckpoint(beequip)
 	local seed = beequip:GetSeed()
-	local quality = beequip:GetQuality() or 0
+	local quality = beequip.Q*5
 	local typedef = beequip:GetTypeDef()
 	if not typedef then return nil end
 	local oldRNG = typedef.OldRNG
@@ -133,8 +148,6 @@ local function deepCopyMap(m)
 	return out
 end
 
--- returns results[waxCount] = { {tag=, hitPct=, mean=, stdev=}, ... } sorted desc by hitPct
--- and survivalPct[waxCount]
 local function predictWaxOutcomes(beequip, waxName, maxWax, iterations)
 	local cp = buildCheckpoint(beequip)
 	if not cp then return nil, nil, "invalid beequip / no typedef" end
@@ -142,10 +155,13 @@ local function predictWaxOutcomes(beequip, waxName, maxWax, iterations)
 	local waxDef = WaxTypes.Get(waxName)
 	if not waxDef then return nil, nil, "invalid wax type" end
 
+	local survivalPct = {}
+	for w = 1, maxWax do
+		survivalPct[w] = 100 * (waxDef.SuccessRate ^ w)
+	end
+
 	local rawResults = {}
 	for w = 1, maxWax do rawResults[w] = {} end
-	local survivalCount = {}
-	for w = 1, maxWax do survivalCount[w] = 0 end
 
 	for _ = 1, iterations do
 		local trialRng = cp.rng:Clone()
@@ -175,10 +191,6 @@ local function predictWaxOutcomes(beequip, waxName, maxWax, iterations)
 		end
 
 		for w = 1, maxWax do
-			local success = math.random() <= waxDef.SuccessRate
-			if not success then break end
-			survivalCount[w] = survivalCount[w] + 1
-
 			local burnCount = math.random(32)
 			for _ = 1, burnCount do trialRng:NextNumber() end
 			for _ = 1, waxDef.Upgrades do rollUpgrade() end
@@ -195,19 +207,17 @@ local function predictWaxOutcomes(beequip, waxName, maxWax, iterations)
 		end
 	end
 
-	local results, survivalPct = {}, {}
+	local results = {}
 	for w = 1, maxWax do
-		survivalPct[w] = 100 * survivalCount[w] / iterations
 		local rows = {}
 		for _, tag in ipairs(cp.allTags) do
 			local b = rawResults[w][tag]
-			if b and b.hits > 0 then
+			if b and b.samples > 0 then
 				local mean = b.sum / b.samples
 				local variance = (b.sumSq / b.samples) - (mean * mean)
 				local stdev = math.sqrt(math.max(variance, 0))
 				table.insert(rows, {
 					tag = tag,
-					def = cp.defByTag[tag],
 					hitPct = 100 * b.hits / b.samples,
 					mean = mean,
 					stdev = stdev,
@@ -218,12 +228,12 @@ local function predictWaxOutcomes(beequip, waxName, maxWax, iterations)
 		results[w] = rows
 	end
 
-	return results, survivalPct
+	return results, survivalPct, nil
 end
 
--- ============================================================
--- GATHER BEEQUIPS
--- ============================================================
+local function GetQuality(bq)
+    return bq.Q
+end
 
 local function getAllBeequips()
 	local stats = ClientStatCache:Get()
@@ -236,7 +246,7 @@ local function getAllBeequips()
 				if entry:HasBeequip() then
 					local bq = entry:FetchBeequip(stats, false)
 					if bq then
-						table.insert(list, { name = "Case - " .. bq:GetDisplayName(), quality = (bq:GetQuality() or 0) * 5, beequip = bq })
+						table.insert(list, { name = "Case - " .. bq:GetDisplayName(), quality = (GetQuality(bq) or 0) * 5, beequip = bq })
 					end
 				end
 			end
@@ -244,13 +254,31 @@ local function getAllBeequips()
 		if stats.Beequips.Storage then
 			for _, data in ipairs(stats.Beequips.Storage) do
 				local bq = BeequipFile.FromData(data)
-				table.insert(list, { name = "Storage - " .. bq:GetDisplayName(), quality = (bq:GetQuality() or 0) * 5, beequip = bq })
+				table.insert(list, { name = "Storage - " .. bq:GetDisplayName(), quality = (GetQuality(bq) or 0) * 5, beequip = bq })
 			end
 		end
+        if TradeGui.GetTheirOffer() then
+            warn("trades detected")
+            for i, data in pairs(TradeGui.GetTheirOffer()[1].Pack) do
+                warn(pcall(function()
+                    local bq = BeequipFile.FromData(data)
+                    table.insert(list, { name = "Trade - " .. bq:GetDisplayName(), quality = (GetQuality(bq) or 0) * 5, beequip = bq })
+                end))
+            end
+        end
 	end
 
 	return list
 end
+
+local MAIN_W, MAIN_H = game:GetService("UserInputService").TouchEnabled and 680 or 880, 500
+
+local INNER_PAD = 16
+
+local LEFT_W = 280
+local RIGHT_W = MAIN_W - LEFT_W - (INNER_PAD * 3)
+
+local CONTENT_W = LEFT_W
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "WaxPredictorGui"
@@ -259,126 +287,196 @@ screenGui.Parent = gethui()
 
 local main = Instance.new("Frame")
 main.Name = "wax"
-main.Size = UDim2.new(0, 420, 0, 480)
-main.Position = UDim2.new(0.5, -210, 0.5, -240)
-main.BackgroundColor3 = Color3.fromRGB(28, 28, 34)
+main.Size = UDim2.new(0, MAIN_W, 0, MAIN_H)
+main.Position = UDim2.new(0.5, -MAIN_W / 2, 0.5, -MAIN_H / 2)
+main.BackgroundColor3 = BG_MAIN
 main.BorderSizePixel = 0
 main.Parent = screenGui
 
 local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 10)
+mainCorner.CornerRadius = UDim.new(0, 14)
 mainCorner.Parent = main
 
--- title bar (drag handle)
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = BORDER
+mainStroke.Thickness = 1
+mainStroke.Parent = main
+
 local titleBar = Instance.new("Frame")
 titleBar.Name = "TitleBar"
-titleBar.Size = UDim2.new(1, 0, 0, 36)
-titleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
+titleBar.Size = UDim2.new(1, 0, 0, 46)
+titleBar.BackgroundColor3 = BG_TITLEBAR
 titleBar.BorderSizePixel = 0
 titleBar.Parent = main
 
 local titleCorner = Instance.new("UICorner")
-titleCorner.CornerRadius = UDim.new(0, 10)
+titleCorner.CornerRadius = UDim.new(0, 14)
 titleCorner.Parent = titleBar
+
+local titleMask = Instance.new("Frame")
+titleMask.BackgroundColor3 = BG_TITLEBAR
+titleMask.BorderSizePixel = 0
+titleMask.Size = UDim2.new(1, 0, 0, 14)
+titleMask.Position = UDim2.new(0, 0, 1, -14)
+titleMask.ZIndex = 0
+titleMask.Parent = titleBar
+
+local accentLine = Instance.new("Frame")
+accentLine.BackgroundColor3 = ACCENT
+accentLine.BorderSizePixel = 0
+accentLine.Size = UDim2.new(1, 0, 0, 2)
+accentLine.Position = UDim2.new(0, 0, 1, 0)
+accentLine.ZIndex = 2
+accentLine.Parent = titleBar
+
+local hexIcon = Instance.new("TextLabel")
+hexIcon.BackgroundTransparency = 1
+hexIcon.Size = UDim2.new(0, 24, 1, 0)
+hexIcon.Position = UDim2.new(0, 16, 0, 0)
+hexIcon.Font = Enum .Font.GothamBold
+hexIcon.Text = "⭐"
+hexIcon.TextColor3 = ACCENT
+hexIcon.TextSize = 20
+hexIcon.Parent = titleBar
 
 local titleLabel = Instance.new("TextLabel")
 titleLabel.BackgroundTransparency = 1
-titleLabel.Size = UDim2.new(1, -40, 1, 0)
-titleLabel.Position = UDim2.new(0, 12, 0, 0)
+titleLabel.Size = UDim2.new(1, -90, 1, 0)
+titleLabel.Position = UDim2.new(0, 44, 0, 0)
 titleLabel.Font = Enum.Font.GothamBold
-titleLabel.Text = "Wax Outcome Predictor"
-titleLabel.TextColor3 = Color3.fromRGB(235, 235, 240)
+titleLabel.Text = "Lunar Predictor"
+titleLabel.TextColor3 = TEXT_HI
 titleLabel.TextSize = 15
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.Parent = titleBar
 
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 28, 0, 28)
-closeBtn.Position = UDim2.new(1, -32, 0, 4)
-closeBtn.BackgroundColor3 = Color3.fromRGB(60, 40, 44)
-closeBtn.Text = "X"
+closeBtn.Position = UDim2.new(1, -38, 0, 9)
+closeBtn.BackgroundColor3 = Color3.fromRGB(190, 60, 60)
+closeBtn.BackgroundTransparency = 1
+closeBtn.AutoButtonColor = false
+closeBtn.Text = "x"
 closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-closeBtn.TextSize = 13
+closeBtn.TextColor3 = TEXT_HI
+closeBtn.TextSize = 16
 closeBtn.Parent = titleBar
 local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 6)
+closeCorner.CornerRadius = UDim.new(0, 8)
 closeCorner.Parent = closeBtn
+closeBtn.MouseEnter:Connect(function()
+	TweenService:Create(closeBtn, TweenInfo.new(0.12), { BackgroundTransparency = 0 }):Play()
+end)
+closeBtn.MouseLeave:Connect(function()
+	TweenService:Create(closeBtn, TweenInfo.new(0.12), { BackgroundTransparency = 1 }):Play()
+end)
 closeBtn.MouseButton1Click:Connect(function()
 	_G.waxloaded = false
 	screenGui:Destroy()
 end)
 
--- drag logic
+local UIS = game:GetService("UserInputService")
+
 do
-	local dragging, dragStart, startPos
+	local dragging = false
+	local dragStart
+	local startPos
+
 	titleBar.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			dragging = true
 			dragStart = input.Position
 			startPos = main.Position
-			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then dragging = false end
-			end)
 		end
 	end)
-	titleBar.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+
+	UIS.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	UIS.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
 			local delta = input.Position - dragStart
-			main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+
+			main.Position = UDim2.new(
+				startPos.X.Scale,
+				startPos.X.Offset + delta.X,
+				startPos.Y.Scale,
+				startPos.Y.Offset + delta.Y
+			)
 		end
 	end)
 end
 
--- ===== generic dropdown builder =====
-local function createDropdown(parent, posY, labelText, options, getDisplayText)
+local function addSectionLabel(y, text)
+	local lbl = Instance.new("TextLabel")
+	lbl.BackgroundTransparency = 1
+	lbl.Size = UDim2.new(1, -INNER_PAD * 2, 0, 16)
+	lbl.Position = UDim2.new(0, INNER_PAD, 0, y)
+	lbl.Font = Enum.Font.GothamBold
+	lbl.Text = text
+	lbl.TextColor3 = ACCENT_DIM
+	lbl.TextSize = 11
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	lbl.Parent = main
+	return lbl
+end
+
+local function createDropdown(parent, x, y, width, labelText, options, getDisplayText)
 	getDisplayText = getDisplayText or function(o) return tostring(o) end
 
 	local container = Instance.new("Frame")
 	container.BackgroundTransparency = 1
-	container.Size = UDim2.new(1, -24, 0, 50)
-	container.Position = UDim2.new(0, 12, 0, posY)
+	container.Size = UDim2.new(0, width, 0, 50)
+	container.Position = UDim2.new(0, x, 0, y)
 	container.Parent = parent
 
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
-	label.Size = UDim2.new(1, 0, 0, 16)
-	label.Font = Enum.Font.Gotham
+	label.Size = UDim2.new(1, 0, 0, 14)
+	label.Font = Enum.Font.GothamMedium
 	label.Text = labelText
-	label.TextColor3 = Color3.fromRGB(180, 180, 190)
-	label.TextSize = 12
+	label.TextColor3 = TEXT_MUTED
+	label.TextSize = 11
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.Parent = container
 
 	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, 0, 0, 30)
-	button.Position = UDim2.new(0, 0, 0, 18)
-	button.BackgroundColor3 = Color3.fromRGB(45, 45, 54)
+	button.Size = UDim2.new(1, 0, 0, 34)
+	button.Position = UDim2.new(0, 0, 0, 16)
+	button.BackgroundColor3 = BG_INPUT
 	button.AutoButtonColor = false
 	button.Font = Enum.Font.Gotham
-	button.TextColor3 = Color3.fromRGB(230, 230, 235)
+	button.TextColor3 = TEXT_MID
 	button.TextSize = 13
 	button.Text = "  Select..."
 	button.TextXAlignment = Enum.TextXAlignment.Left
 	button.Parent = container
 	local btnCorner = Instance.new("UICorner")
-	btnCorner.CornerRadius = UDim.new(0, 6)
+	btnCorner.CornerRadius = UDim.new(0, 8)
 	btnCorner.Parent = button
+	local btnStroke = Instance.new("UIStroke")
+	btnStroke.Color = BORDER
+	btnStroke.Thickness = 1
+	btnStroke.Parent = button
+	addHoverTween(button, "BackgroundColor3", BG_INPUT_HI, BG_INPUT)
 
 	local arrow = Instance.new("TextLabel")
 	arrow.BackgroundTransparency = 1
-	arrow.Size = UDim2.new(0, 20, 1, 0)
-	arrow.Position = UDim2.new(1, -24, 0, 0)
-	arrow.Text = "v"
-	arrow.TextColor3 = Color3.fromRGB(180, 180, 190)
+	arrow.Size = UDim2.new(0, 22, 1, 0)
+	arrow.Position = UDim2.new(1, -26, 0, 0)
+	arrow.Text = "▼"
+	arrow.TextColor3 = TEXT_MUTED
 	arrow.Font = Enum.Font.Gotham
-	arrow.TextSize = 14
+	arrow.TextSize = 13
 	arrow.Parent = button
 
 	local listFrame = Instance.new("ScrollingFrame")
 	listFrame.Size = UDim2.new(1, 0, 0, 0)
-	listFrame.Position = UDim2.new(0, 0, 1, 2)
-	listFrame.BackgroundColor3 = Color3.fromRGB(38, 38, 46)
+	listFrame.Position = UDim2.new(0, 0, 1, 4)
+	listFrame.BackgroundColor3 = BG_OPTION
 	listFrame.BorderSizePixel = 0
 	listFrame.Visible = false
 	listFrame.ZIndex = 10
@@ -386,9 +484,14 @@ local function createDropdown(parent, posY, labelText, options, getDisplayText)
 	listFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	listFrame.ScrollBarThickness = 4
 	listFrame.Parent = button
+    listFrame.ClipsDescendants = true
 	local listCorner = Instance.new("UICorner")
-	listCorner.CornerRadius = UDim.new(0, 6)
+	listCorner.CornerRadius = UDim.new(0, 8)
 	listCorner.Parent = listFrame
+	local listStroke = Instance.new("UIStroke")
+	listStroke.Color = BORDER
+	listStroke.Thickness = 1
+	listStroke.Parent = listFrame
 	local listLayout = Instance.new("UIListLayout")
 	listLayout.Parent = listFrame
 
@@ -402,19 +505,22 @@ local function createDropdown(parent, posY, labelText, options, getDisplayText)
 		end
 		for _, opt in ipairs(options) do
 			local optBtn = Instance.new("TextButton")
-			optBtn.Size = UDim2.new(1, 0, 0, 26)
-			optBtn.BackgroundColor3 = Color3.fromRGB(38, 38, 46)
-			optBtn.AutoButtonColor = true
+			optBtn.Size = UDim2.new(1, 0, 0, 28)
+			optBtn.BackgroundColor3 = BG_OPTION
+			optBtn.AutoButtonColor = false
 			optBtn.Font = Enum.Font.Gotham
-			optBtn.TextColor3 = Color3.fromRGB(225, 225, 230)
+			optBtn.TextColor3 = TEXT_MID
 			optBtn.TextSize = 12
 			optBtn.Text = "  " .. getDisplayText(opt)
 			optBtn.TextXAlignment = Enum.TextXAlignment.Left
 			optBtn.ZIndex = 11
 			optBtn.Parent = listFrame
+            optBtn.BorderSizePixel = 0
+			addHoverTween(optBtn, "BackgroundColor3", BG_OPTION_HI, BG_OPTION)
 			optBtn.MouseButton1Click:Connect(function()
 				selected = opt
 				button.Text = "  " .. getDisplayText(opt)
+				button.TextColor3 = TEXT_HI
 				listFrame.Visible = false
 				listFrame.Size = UDim2.new(1, 0, 0, 0)
 				if onSelect then onSelect(opt) end
@@ -426,7 +532,7 @@ local function createDropdown(parent, posY, labelText, options, getDisplayText)
 	button.MouseButton1Click:Connect(function()
 		listFrame.Visible = not listFrame.Visible
 		if listFrame.Visible then
-			local h = math.min(#options * 26, 150)
+			local h = math.min(#options * 28, 160)
 			listFrame.Size = UDim2.new(1, 0, 0, h)
 		else
 			listFrame.Size = UDim2.new(1, 0, 0, 0)
@@ -441,76 +547,117 @@ local function createDropdown(parent, posY, labelText, options, getDisplayText)
 	}
 end
 
--- ===== beequip dropdown =====
-local beequipList = getAllBeequips()
-local beequipDropdown = createDropdown(main, 46, "Beequip", beequipList, function(o)
-	return string.format("%s  (%.2f⭐)", o.name, o.quality)
-end)
+addSectionLabel(58, "C O N F I G U R E")
+
+local REFRESH_BTN_W = 34
+local beequipDropdown = createDropdown(
+	main, INNER_PAD, 78, LEFT_W - REFRESH_BTN_W - 8,
+	"Beequip", getAllBeequips(),
+	function(o) return string.format("%s  (%.4f★)", o.name, o.quality) end
+)
 
 local refreshBtn = Instance.new("TextButton")
-refreshBtn.Size = UDim2.new(0, 70, 0, 30)
-refreshBtn.Position = UDim2.new(1, -82, 0, 64)
-refreshBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 54)
-refreshBtn.Font = Enum.Font.Gotham
-refreshBtn.TextColor3 = Color3.fromRGB(225, 225, 230)
-refreshBtn.TextSize = 12
-refreshBtn.Text = "Refresh"
+refreshBtn.Size = UDim2.new(0, REFRESH_BTN_W, 0, 34)
+refreshBtn.Position = UDim2.new(0, INNER_PAD + (LEFT_W - REFRESH_BTN_W), 0, 94)
+refreshBtn.BackgroundColor3 = BG_INPUT
+refreshBtn.AutoButtonColor = false
+refreshBtn.Font = Enum.Font.GothamBold
+refreshBtn.TextColor3 = ACCENT
+refreshBtn.TextSize = 15
+refreshBtn.Text = "🔄"
 refreshBtn.Parent = main
 local refreshCorner = Instance.new("UICorner")
-refreshCorner.CornerRadius = UDim.new(0, 6)
+refreshCorner.CornerRadius = UDim.new(0, 8)
 refreshCorner.Parent = refreshBtn
+local refreshStroke = Instance.new("UIStroke")
+refreshStroke.Color = BORDER
+refreshStroke.Thickness = 1
+refreshStroke.Parent = refreshBtn
+addHoverTween(refreshBtn, "BackgroundColor3", BG_INPUT_HI, BG_INPUT)
 refreshBtn.MouseButton1Click:Connect(function()
-	beequipList = getAllBeequips()
-	beequipDropdown.refreshOptions(beequipList)
+	beequipDropdown.refreshOptions(getAllBeequips())
 end)
 
--- ===== wax type dropdown =====
-local waxDropdown = createDropdown(main, 104, "Wax Type", WAX_NAMES, function(o) return o end)
+local HALF_GAP = 12
+local HALF_W = (LEFT_W - HALF_GAP) / 2
 
--- ===== wax count dropdown =====
+local waxDropdown = createDropdown(
+	main, INNER_PAD, 142, HALF_W,
+	"Wax Type", WAX_NAMES, function(o) return o end
+)
+
 local countOptions = { 1, 2, 3, 4, 5 }
-local countDropdown = createDropdown(main, 162, "Number of Waxes to Apply", countOptions, function(o)
-	return tostring(o) .. "x"
-end)
+local countDropdown = createDropdown(
+	main, INNER_PAD + HALF_W + HALF_GAP, 142, HALF_W,
+	"Wax Count", countOptions, function(o) return tostring(o) .. "x" end
+)
 
--- ===== predict button =====
 local predictBtn = Instance.new("TextButton")
-predictBtn.Size = UDim2.new(1, -24, 0, 36)
-predictBtn.Position = UDim2.new(0, 12, 0, 220)
-predictBtn.BackgroundColor3 = Color3.fromRGB(70, 110, 200)
+predictBtn.Size = UDim2.new(0, LEFT_W, 0, 40)
+predictBtn.Position = UDim2.new(0, INNER_PAD, 0, 206)
+predictBtn.BackgroundColor3 = ACCENT
+predictBtn.AutoButtonColor = false
 predictBtn.Font = Enum.Font.GothamBold
-predictBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+predictBtn.TextColor3 = Color3.fromRGB(30, 22, 10)
 predictBtn.TextSize = 14
-predictBtn.Text = "Predict"
+predictBtn.Text = "PREDICT"
 predictBtn.Parent = main
 local predictCorner = Instance.new("UICorner")
-predictCorner.CornerRadius = UDim.new(0, 8)
+predictCorner.CornerRadius = UDim.new(0, 9)
 predictCorner.Parent = predictBtn
+addHoverTween(predictBtn, "BackgroundColor3", Color3.fromRGB(255, 195, 80), ACCENT)
 
--- ===== results scroll area =====
+local divider = Instance.new("Frame")
+divider.BackgroundColor3 = BORDER
+divider.BorderSizePixel = 0
+divider.Size = UDim2.new(1, -INNER_PAD * 2, 0, 1)
+divider.Position = UDim2.new(0, INNER_PAD, 0, 262)
+divider.Visible = false
+divider.Parent = main
+
+local resultsLabel = addSectionLabel(58, "R E S U L T S")
+resultsLabel.Position = UDim2.new(0, LEFT_W + INNER_PAD * 2, 0, 58)
+
+local RESULTS_Y = 78
 local resultsFrame = Instance.new("ScrollingFrame")
-resultsFrame.Size = UDim2.new(1, -24, 1, -270)
-resultsFrame.Position = UDim2.new(0, 12, 0, 264)
-resultsFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 27)
+resultsFrame.Size = UDim2.new(
+	0,
+	RIGHT_W,
+	0,
+	MAIN_H - RESULTS_Y - INNER_PAD
+)
+
+resultsFrame.Position = UDim2.new(
+	0,
+	LEFT_W + INNER_PAD * 2,
+	0,
+	RESULTS_Y
+)
+resultsFrame.BackgroundColor3 = BG_TABLE
 resultsFrame.BorderSizePixel = 0
-resultsFrame.ScrollBarThickness = 5
-resultsFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+resultsFrame.ScrollBarThickness = 6
+resultsFrame.ScrollingDirection = Enum.ScrollingDirection.XY
+resultsFrame.AutomaticCanvasSize = Enum.AutomaticSize.XY
 resultsFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 resultsFrame.Parent = main
 local resultsCorner = Instance.new("UICorner")
-resultsCorner.CornerRadius = UDim.new(0, 8)
+resultsCorner.CornerRadius = UDim.new(0, 9)
 resultsCorner.Parent = resultsFrame
+local resultsStroke = Instance.new("UIStroke")
+resultsStroke.Color = BORDER
+resultsStroke.Thickness = 1
+resultsStroke.Parent = resultsFrame
 
 local resultsLayout = Instance.new("UIListLayout")
 resultsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-resultsLayout.Padding = UDim.new(0, 6)
+resultsLayout.Padding = UDim.new(0, 4)
 resultsLayout.Parent = resultsFrame
 
 local resultsPadding = Instance.new("UIPadding")
-resultsPadding.PaddingTop = UDim.new(0, 8)
-resultsPadding.PaddingLeft = UDim.new(0, 8)
-resultsPadding.PaddingRight = UDim.new(0, 8)
-resultsPadding.PaddingBottom = UDim.new(0, 8)
+resultsPadding.PaddingTop = UDim.new(0, 10)
+resultsPadding.PaddingLeft = UDim.new(0, 10)
+resultsPadding.PaddingRight = UDim.new(0, 10)
+resultsPadding.PaddingBottom = UDim.new(0, 10)
 resultsPadding.Parent = resultsFrame
 
 local function clearResults()
@@ -521,30 +668,195 @@ local function clearResults()
 	end
 end
 
-local function addSectionHeader(text, order)
+local function addPlainLine(text, order, color, bold, size)
 	local lbl = Instance.new("TextLabel")
 	lbl.BackgroundTransparency = 1
-	lbl.Size = UDim2.new(1, 0, 0, 20)
-	lbl.Font = Enum.Font.GothamBold
+	lbl.Size = UDim2.new(1, 0, 0, 18)
+	lbl.AutomaticSize = Enum.AutomaticSize.Y
+	lbl.Font = bold and Enum.Font.GothamBold or Enum.Font.Gotham
 	lbl.Text = text
-	lbl.TextColor3 = Color3.fromRGB(120, 170, 255)
-	lbl.TextSize = 13
+	lbl.TextColor3 = color or TEXT_MID
+	lbl.TextSize = size or 12
+	lbl.TextWrapped = true
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
 	lbl.LayoutOrder = order
 	lbl.Parent = resultsFrame
+	return lbl
 end
 
-local function addStatLine(text, order)
-	local lbl = Instance.new("TextLabel")
-	lbl.BackgroundTransparency = 1
-	lbl.Size = UDim2.new(1, 0, 0, 16)
-	lbl.Font = Enum.Font.Code
-	lbl.Text = text
-	lbl.TextColor3 = Color3.fromRGB(210, 210, 215)
-	lbl.TextSize = 12
-	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	lbl.LayoutOrder = order
-	lbl.Parent = resultsFrame
+local function shortenTag(tag)
+	local prefix, rest = tag:match("^(%a+):(.+)$")
+	if not prefix then return tag end
+	rest = rest:gsub("|P:.*$", "")
+	local label = ({ B = "Base Stat", H = "Hive Bonus", A = "Ability", AP = "AbilPool" })[prefix] or prefix
+	return label .. ": " .. rest
+end
+
+local MAIN_W, MAIN_H = 920, 500
+
+local function buildResultsTable(results, survivalPct, maxWax)
+	clearResults()
+	local order = 1
+
+	local survParts = {}
+	for w = 1, maxWax do
+		table.insert(survParts, string.format("wax %d: %.1f%%", w, survivalPct[w]))
+	end
+	addPlainLine("Survival odds (independent of seed) -  " .. table.concat(survParts, "   "),
+		order, TEXT_MUTED, false, 11)
+	order += 1
+
+	local spacer = Instance.new("Frame")
+	spacer.BackgroundTransparency = 1
+	spacer.Size = UDim2.new(1, 0, 0, 6)
+	spacer.LayoutOrder = order
+	spacer.Parent = resultsFrame
+	order += 1
+
+	local tagSet, tagOrder = {}, {}
+	for w = 1, maxWax do
+		for _, row in ipairs(results[w]) do
+			if not tagSet[row.tag] then
+				tagSet[row.tag] = true
+				table.insert(tagOrder, row.tag)
+			end
+		end
+	end
+
+	if #tagOrder == 0 then
+		addPlainLine("No upgrade hits possible for this wax on this beequip.", order)
+		return
+	end
+
+	local byTagPerLevel = {}
+	for w = 1, maxWax do
+		byTagPerLevel[w] = {}
+		for _, row in ipairs(results[w]) do
+			byTagPerLevel[w][row.tag] = row
+		end
+	end
+
+	table.sort(tagOrder, function(a, b)
+		local ra = byTagPerLevel[maxWax][a]
+		local rb = byTagPerLevel[maxWax][b]
+		return (ra and ra.hitPct or -1) > (rb and rb.hitPct or -1)
+	end)
+
+	-- one card per upgrade, full width, auto-height
+	for i, tag in ipairs(tagOrder) do
+		local card = Instance.new("Frame")
+		card.BackgroundColor3 = Color3.fromRGB(24, 21, 18)
+		card.BorderSizePixel = 0
+		card.AutomaticSize = Enum.AutomaticSize.Y
+		card.Size = UDim2.new(1, 0, 0, 0)
+		card.LayoutOrder = order
+		card.Parent = resultsFrame
+		order += 1
+
+		local cardCorner = Instance.new("UICorner")
+		cardCorner.CornerRadius = UDim.new(0, 8)
+		cardCorner.Parent = card
+		local cardStroke = Instance.new("UIStroke")
+		cardStroke.Color = BORDER
+		cardStroke.Thickness = 1
+		cardStroke.Parent = card
+
+		local cardLayout = Instance.new("UIListLayout")
+		cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		cardLayout.Padding = UDim.new(0, 6)
+		cardLayout.Parent = card
+
+		local cardPad = Instance.new("UIPadding")
+		cardPad.PaddingTop = UDim.new(0, 10)
+		cardPad.PaddingBottom = UDim.new(0, 10)
+		cardPad.PaddingLeft = UDim.new(0, 12)
+		cardPad.PaddingRight = UDim.new(0, 12)
+		cardPad.Parent = card
+
+		-- header: full width, as long as it needs to be, never truncated
+		local header = Instance.new("TextLabel")
+		header.BackgroundTransparency = 1
+		header.Size = UDim2.new(1, 0, 0, 18)
+		header.AutomaticSize = Enum.AutomaticSize.Y
+		header.Font = Enum.Font.GothamBold
+		header.Text = shortenTag(tag)
+		header.TextColor3 = ACCENT
+		header.TextSize = 14
+		header.TextWrapped = true
+		header.TextXAlignment = Enum.TextXAlignment.Left
+		header.LayoutOrder = 1
+		header.Parent = card
+
+		-- wrapping pill row for wax progression
+		local pillRow = Instance.new("Frame")
+		pillRow.BackgroundTransparency = 1
+		pillRow.Size = UDim2.new(1, 0, 0, 0)
+		pillRow.AutomaticSize = Enum.AutomaticSize.Y
+		pillRow.LayoutOrder = 2
+		pillRow.Parent = card
+
+		local pillLayout = Instance.new("UIListLayout")
+		pillLayout.FillDirection = Enum.FillDirection.Horizontal
+		pillLayout.Wraps = true
+		pillLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		pillLayout.Padding = UDim.new(0, 6)
+		pillLayout.Parent = pillRow
+
+		for w = 1, maxWax do
+			local r = byTagPerLevel[w][tag]
+
+			local pill = Instance.new("Frame")
+			pill.BackgroundColor3 = BG_INPUT
+			pill.AutomaticSize = Enum.AutomaticSize.X
+			pill.Size = UDim2.new(0, 0, 0, 36)
+			pill.LayoutOrder = w
+			pill.Parent = pillRow
+
+			local pillCorner = Instance.new("UICorner")
+			pillCorner.CornerRadius = UDim.new(0, 6)
+			pillCorner.Parent = pill
+
+			local pillPad = Instance.new("UIPadding")
+			pillPad.PaddingLeft = UDim.new(0, 10)
+			pillPad.PaddingRight = UDim.new(0, 10)
+			pillPad.Parent = pill
+
+			local pillLayoutV = Instance.new("UIListLayout")
+			pillLayoutV.FillDirection = Enum.FillDirection.Vertical
+			pillLayoutV.VerticalAlignment = Enum.VerticalAlignment.Center
+			pillLayoutV.HorizontalAlignment = Enum.HorizontalAlignment.Center
+			pillLayoutV.Padding = UDim.new(0, 1)
+			pillLayoutV.Parent = pill
+
+			local waxLabel = Instance.new("TextLabel")
+			waxLabel.BackgroundTransparency = 1
+			waxLabel.AutomaticSize = Enum.AutomaticSize.X
+			waxLabel.Size = UDim2.new(0, 0, 0, 12)
+			waxLabel.Font = Enum.Font.GothamMedium
+			waxLabel.Text = "WAX " .. w
+			waxLabel.TextColor3 = TEXT_MUTED
+			waxLabel.TextSize = 9
+			waxLabel.Parent = pill
+
+			local statLine = Instance.new("TextLabel")
+			statLine.BackgroundTransparency = 1
+			statLine.AutomaticSize = Enum.AutomaticSize.X
+			statLine.Size = UDim2.new(0, 0, 0, 16)
+			statLine.Font = Enum.Font.GothamBold
+			statLine.TextSize = 13
+			statLine.Parent = pill
+
+			if r then
+				statLine.Text = string.format("%.0f%%  ·  %+.2f", r.hitPct, r.mean)
+				statLine.TextColor3 = r.hitPct >= 50 and TEXT_HI or TEXT_MID
+			else
+				statLine.Text = "—"
+				statLine.TextColor3 = Color3.fromRGB(85, 80, 73)
+			end
+
+			pill.Parent = pillRow
+		end
+	end
 end
 
 predictBtn.MouseButton1Click:Connect(function()
@@ -555,47 +867,28 @@ predictBtn.MouseButton1Click:Connect(function()
 	clearResults()
 
 	if not beequipChoice then
-		addStatLine("Pick a beequip first.", 1)
+		addPlainLine("Pick a beequip first.", 1)
 		return
 	end
 	if not waxChoice then
-		addStatLine("Pick a wax type first.", 1)
+		addPlainLine("Pick a wax type first.", 1)
 		return
 	end
 	if not countChoice then
-		addStatLine("Pick a wax count first.", 1)
+		addPlainLine("Pick a wax count first.", 1)
 		return
 	end
 
-	addStatLine("Running simulation...", 1)
+	addPlainLine("Running simulation...", 1)
 	task.wait()
 
-	local results, survivalPct, errMsg = predictWaxOutcomes(beequipChoice.beequip, waxChoice, countChoice, 5000)
-	clearResults()
+	local results, survivalPct, errMsg = predictWaxOutcomes(beequipChoice.beequip, waxChoice, countChoice, 8000)
 
 	if not results then
-		addStatLine("Error: " .. tostring(errMsg), 1)
+		clearResults()
+		addPlainLine("Error: " .. tostring(errMsg), 1, Color3.fromRGB(235, 100, 100))
 		return
 	end
 
-	local order = 1
-	for w = 1, countChoice do
-		addSectionHeader(string.format(
-			"After %d %s wax(es) -- survived %.2f%%", w, waxChoice, survivalPct[w]
-		), order)
-		order += 1
-
-		if #results[w] == 0 then
-			addStatLine("  (no upgrade hits possible)", order)
-			order += 1
-		else
-			for _, row in ipairs(results[w]) do
-				addStatLine(string.format(
-					"  %-32s %5.1f%%  | avg %.2f (+/-%.2f)",
-					row.tag, row.hitPct, row.mean, row.stdev
-				), order)
-				order += 1
-			end
-		end
-	end
+	buildResultsTable(results, survivalPct, countChoice)
 end)
