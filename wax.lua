@@ -45,7 +45,7 @@ local function _ugDefToTag(def)
         if def.BeeStat then
             tag = BeeStatMods.GetType(def.BeeStat).DisplayName
         elseif def.HiveBonusStat then
-            tag = "[Hive Bonus]" .. require(Mods[def.HiveBonusStat]).Description({}, def.Params)
+            tag = "[Hive Bonus]" .. require(Mods[def.HiveBonusStat]).Description({Value=0,Op=def.Op or'Add'}, def.Params)
         elseif def.BeeAbility then
             tag = "Ability: " .. def.BeeAbility .. " (from wax)"
         end
@@ -259,11 +259,14 @@ local function getAllBeequips()
 		end
         if TradeGui.GetTheirOffer() then
             warn("trades detected")
-            for i, data in pairs(TradeGui.GetTheirOffer()[1].Pack) do
-                warn(pcall(function()
-                    local bq = BeequipFile.FromData(data)
+            for i, data in pairs(TradeGui.GetTheirOffer()) do
+                local pack = data.Pack
+                if pack.Category == "Beequip" then
+                    local bq = BeequipFile.FromData(pack.File)
                     table.insert(list, { name = "Trade - " .. bq:GetDisplayName(), quality = (GetQuality(bq) or 0) * 5, beequip = bq })
-                end))
+                else
+                    warn("not a beequip")
+                end
             end
         end
 	end
@@ -882,7 +885,7 @@ predictBtn.MouseButton1Click:Connect(function()
 	addPlainLine("Running simulation...", 1)
 	task.wait()
 
-	local results, survivalPct, errMsg = predictWaxOutcomes(beequipChoice.beequip, waxChoice, countChoice, 8000)
+	local results, survivalPct, errMsg = predictWaxOutcomes(beequipChoice.beequip, waxChoice, countChoice, 14000)
 
 	if not results then
 		clearResults()
