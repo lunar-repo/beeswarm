@@ -45,7 +45,7 @@ local function _ugDefToTag(def)
         if def.BeeStat then
             tag = BeeStatMods.GetType(def.BeeStat).DisplayName
         elseif def.HiveBonusStat then
-            tag = "[Hive Bonus]" .. require(Mods[def.HiveBonusStat]).Description({Value=0,Op=def.Op or'Add'}, def.Params)
+            tag = "[Hive Bonus] " .. require(Mods[def.HiveBonusStat]).Description({Value=0,Op=def.Op or'Add'}, def.Params):match(' (.+)')
         elseif def.BeeAbility then
             tag = "Ability: " .. def.BeeAbility .. " (from wax)"
         end
@@ -610,6 +610,17 @@ predictCorner.CornerRadius = UDim.new(0, 9)
 predictCorner.Parent = predictBtn
 addHoverTween(predictBtn, "BackgroundColor3", Color3.fromRGB(255, 195, 80), ACCENT)
 
+local precisionoptions = {}
+for i = 1, 17 do
+    table.insert(precisionoptions, 1, "2^" .. i .. " (" .. (2^i) .. ")")
+end
+
+local precisionDropdown = createDropdown(
+	main, INNER_PAD, 256, LEFT_W,
+	"Precision (Higher = more accurate but more lag)", precisionoptions,
+	function(o) return o end
+)
+
 local divider = Instance.new("Frame")
 divider.BackgroundColor3 = BORDER
 divider.BorderSizePixel = 0
@@ -866,6 +877,7 @@ predictBtn.MouseButton1Click:Connect(function()
 	local beequipChoice = beequipDropdown.getSelected()
 	local waxChoice = waxDropdown.getSelected()
 	local countChoice = countDropdown.getSelected()
+	local precision = precisionDropdown.getSelected()
 
 	clearResults()
 
@@ -881,11 +893,15 @@ predictBtn.MouseButton1Click:Connect(function()
 		addPlainLine("Pick a wax count first.", 1)
 		return
 	end
+    if not precision then
+		addPlainLine("Select the precision of prediction results.", 1)
+		return
+	end
 
 	addPlainLine("Running simulation...", 1)
 	task.wait()
 
-	local results, survivalPct, errMsg = predictWaxOutcomes(beequipChoice.beequip, waxChoice, countChoice, 14000)
+	local results, survivalPct, errMsg = predictWaxOutcomes(beequipChoice.beequip, waxChoice, countChoice, 2^tonumber(precision:match("2%^(%d+)")))
 
 	if not results then
 		clearResults()
